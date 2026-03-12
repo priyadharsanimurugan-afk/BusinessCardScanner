@@ -1,0 +1,71 @@
+{
+  "expo": {
+    "name": "Scannify",
+    "slug": "BusinessCardScanner",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/logo.png",
+    "scheme": "Scannify",
+    "userInterfaceStyle": "automatic",
+    
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "softwareKeyboardLayoutMode": "pan",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+       "permissions": [],
+
+        "foregroundImage": "./assets/images/logo.png",
+        "backgroundImage": "./assets/images/logo.png",
+        "monochromeImage": "./assets/images/logo.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.priyachithra.BusinessCardScanner"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/logo.png"
+    },
+    "plugins": [
+      "expo-router",
+       ["expo-camera", { "cameraPermission": "Allow camera to scan business cards" }],
+       ["expo-image-picker", { "photosPermission": "Allow photo access to scan cards" }],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/logo.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "backgroundColor": "#000000"
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "eee82738-85b5-470a-ad66-44d34d7ad689"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+   "updates": {
+  "enabled": true,
+  "checkAutomatically": "ON_LOAD",
+  "fallbackToCacheTimeout": 0,
+  "url": "https://u.expo.dev/eee82738-85b5-470a-ad66-44d34d7ad689"
+}
+
+  }
+}

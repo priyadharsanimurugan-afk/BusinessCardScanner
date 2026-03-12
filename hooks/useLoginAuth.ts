@@ -1,0 +1,209 @@
+import { router } from 'expo-router';
+import { useState } from 'react';
+
+interface AuthState {
+  
+  // Login
+  loginEmail: string;
+  setLoginEmail: (email: string) => void;
+  loginPass: string;
+  setLoginPass: (pass: string) => void;
+  showLoginPass: boolean;
+  setShowLoginPass: (show: boolean) => void;
+  
+  // Signup - UPDATED
+  userName: string;
+  setUserName: (name: string) => void;
+  phoneNumber: string;
+  setPhoneNumber: (phone: string) => void;
+  signupEmail: string;
+  setSignupEmail: (email: string) => void;
+  signupPass: string;
+  setSignupPass: (pass: string) => void;
+  confirmPass: string;
+  setConfirmPass: (pass: string) => void;
+  showSignupPass: boolean;
+  setShowSignupPass: (show: boolean) => void;
+  showConfirmPass: boolean;
+  setShowConfirmPass: (show: boolean) => void;
+  passStrength: number;
+  
+  // Forgot
+  forgotEmail: string;
+  setForgotEmail: (email: string) => void;
+  
+  // UI
+  activeTab: 'login' | 'signup';
+  setActiveTab: (tab: 'login' | 'signup') => void;
+  showForgot: boolean;
+  setShowForgot: (show: boolean) => void;
+  remember: boolean;
+  setRemember: (remember: boolean) => void;
+  loading: { login: boolean; signup: boolean };
+  toast: { show: boolean; msg: string; type: 'success' | 'error' | 'info' };
+  
+  // Functions
+  showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
+  handleLogin: () => void;
+  handleSignup: () => void;
+  handleForgot: () => void;
+  checkStrength: (val: string) => void;
+}
+
+type ToastType = 'success' | 'error' | 'info';
+
+export const useAuth = (): AuthState => {
+  const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
+  const [showForgot, setShowForgot] = useState(false);
+  const [remember, setRemember] = useState(false);
+  const [toast, setToast] = useState<{
+    show: boolean;
+    msg: string;
+    type: ToastType;
+  }>({
+    show: false,
+    msg: '',
+    type: 'info',
+  });
+  const [loading, setLoading] = useState({ login: false, signup: false });
+
+  // Login form
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPass, setLoginPass] = useState('');
+  const [showLoginPass, setShowLoginPass] = useState(false);
+
+  // Signup form - UPDATED
+  const [userName, setUserName] = useState('');           // Changed from firstName
+  const [phoneNumber, setPhoneNumber] = useState('');     // Changed from lastName
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPass, setSignupPass] = useState('');
+  const [confirmPass, setConfirmPass] = useState('');
+  const [showSignupPass, setShowSignupPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
+  const [passStrength, setPassStrength] = useState(0);
+
+  // Forgot form
+  const [forgotEmail, setForgotEmail] = useState('');
+
+  const validateEmail = (email: string): boolean => {
+    return /\S+@\S+\.\S+/.test(email);
+  };
+
+  const showToast = (msg: string, type: ToastType = 'info'): void => {
+    setToast({ show: true, msg, type });
+    setTimeout(() => setToast({ show: false, msg: '', type: 'info' }), 2800);
+  };
+
+  const handleLogin = (): void => {
+    if (!validateEmail(loginEmail)) {
+      showToast('Please enter a valid email', 'error');
+      return;
+    }
+    if (!loginPass) {
+      showToast('Password is required', 'error');
+      return;
+    }
+    setLoading({ ...loading, login: true });
+    setTimeout(() => {
+      setLoading({ ...loading, login: false });
+      showToast('Welcome back!', 'success');
+      router.replace('/dashboard'); 
+    }, 1500);
+  };
+
+  const handleSignup = (): void => {
+    // UPDATED validation
+    if (!userName) {
+      showToast('User name is required', 'error');
+      return;
+    }
+    if (!phoneNumber) {
+      showToast('Phone number is required', 'error');
+      return;
+    }
+    if (!validateEmail(signupEmail)) {
+      showToast('Valid email is required', 'error');
+      return;
+    }
+    if (signupPass !== confirmPass) {
+      showToast('Passwords do not match', 'error');
+      return;
+    }
+    if (signupPass.length < 8) {
+      showToast('Password must be at least 8 characters', 'error');
+      return;
+    }
+    setLoading({ ...loading, signup: true });
+    setTimeout(() => {
+      setLoading({ ...loading, signup: false });
+      router.replace('/dashboard');  
+      showToast('Account created successfully! 🎉', 'success');
+    }, 1600);
+  };
+
+  const handleForgot = (): void => {
+    if (!validateEmail(forgotEmail)) {
+      showToast('Enter a valid email', 'error');
+      return;
+    }
+    showToast('Reset link sent to your email! 📧', 'success');
+    setTimeout(() => setShowForgot(false), 800);
+  };
+
+  const checkStrength = (val: string): void => {
+    let score = 0;
+    if (val.length >= 8) score++;
+    if (/[A-Z]/.test(val)) score++;
+    if (/[0-9]/.test(val)) score++;
+    if (/[^A-Za-z0-9]/.test(val)) score++;
+    setPassStrength(score);
+  };
+
+  return {
+    // Login
+    loginEmail, 
+    setLoginEmail,
+    loginPass, 
+    setLoginPass,
+    showLoginPass, 
+    setShowLoginPass,
+    
+    // Signup - UPDATED
+    userName, 
+    setUserName,
+    phoneNumber, 
+    setPhoneNumber,
+    signupEmail, 
+    setSignupEmail,
+    signupPass, 
+    setSignupPass,
+    confirmPass, 
+    setConfirmPass,
+    showSignupPass, 
+    setShowSignupPass,
+    showConfirmPass, 
+    setShowConfirmPass,
+    passStrength,
+    
+    // Forgot
+    forgotEmail, 
+    setForgotEmail,
+    
+    // UI
+    activeTab, 
+    setActiveTab,
+    showForgot, 
+    setShowForgot,
+    remember, 
+    setRemember,
+    loading,
+    toast,
+    
+    // Functions
+    showToast,
+    handleLogin,
+    handleSignup,
+    handleForgot,
+    checkStrength,
+  };
+};
