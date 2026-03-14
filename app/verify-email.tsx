@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, StatusBar } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -6,6 +6,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import { verifyEmail } from "@/services/auth";
 import { loginStyles } from "@/components/styles/loginStyles";
 import { colors } from "@/constants/colors";
+import { useMenuVisibility } from "@/context/MenuVisibilityContext";
 
 export default function VerifyEmailScreen() {
   const { email } = useLocalSearchParams();
@@ -31,7 +32,15 @@ export default function VerifyEmailScreen() {
       setLoading(false);
     }
   };
-
+  const { setMenuVisible } = useMenuVisibility(); // Add this
+  useEffect(() => {
+    setMenuVisible(false);
+    
+    // Show menu again when component unmounts (user navigates away)
+    return () => {
+      setMenuVisible(true);
+    };
+  }, [setMenuVisible]);
   return (
     <SafeAreaView style={loginStyles.container}>
       <StatusBar barStyle="light-content" />

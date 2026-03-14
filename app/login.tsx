@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   ScrollView,
   View,
@@ -13,6 +13,8 @@ import { useAuth } from "@/hooks/useLoginAuth";
 import { AuthForms } from "@/components/authForm";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { useMenuVisibility } from "@/context/MenuVisibilityContext";
+
 
 const LoginScreen = () => {
   const {
@@ -62,6 +64,15 @@ const LoginScreen = () => {
     checkStrength,
   } = useAuth();
 
+    const { setMenuVisible } = useMenuVisibility(); // Add this
+  useEffect(() => {
+    setMenuVisible(false);
+    
+    // Show menu again when component unmounts (user navigates away)
+    return () => {
+      setMenuVisible(true);
+    };
+  }, [setMenuVisible]);
   return (
     <SafeAreaView
       style={loginStyles.container}

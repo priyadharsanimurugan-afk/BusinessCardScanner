@@ -6,17 +6,17 @@ import { Entypo } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
 
 function TabIcon({ name, label, focused, isScan = false }: { name: any; label: string; focused: boolean; isScan?: boolean }) {
-  if (isScan) {
-    // Special rendering for the Scan tab to match the HTML design
-    return (
-      <View style={tabStyles.scanTab}>
-        <View style={[tabStyles.scanOrb, focused && tabStyles.scanOrbActive]}>
-          <Entypo name="camera" size={21} color={colors.white} />
-        </View>
-        <Text style={[tabStyles.scanLabel, focused && tabStyles.scanLabelActive]}>{label}</Text>
-      </View>
-    );
-  }
+  // if (isScan) {
+  //   // Special rendering for the Scan tab to match the HTML design
+  //   return (
+  //     <View style={tabStyles.scanTab}>
+  //       <View style={[tabStyles.scanOrb, focused && tabStyles.scanOrbActive]}>
+  //         <Entypo name="camera" size={21} color={colors.white} />
+  //       </View>
+  //       <Text style={[tabStyles.scanLabel, focused && tabStyles.scanLabelActive]}>{label}</Text>
+  //     </View>
+  //   );
+  // }
 
   // Rendering for all other tabs
   return (

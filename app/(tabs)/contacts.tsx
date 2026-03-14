@@ -19,6 +19,7 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useContact } from '@/hooks/useContact';
@@ -78,6 +79,39 @@ const buildImageUri = (base64?: string, mime?: string, url?: string) => {
   if (url) return url;
   if (base64) return `data:${mime ?? 'image/jpeg'};base64,${base64}`;
   return null;
+};
+
+
+  const handlePhonePress = (p: string) => { if (p) Linking.openURL(`tel:${p}`); };
+// Helper function to handle email
+const handleEmailPress = (email: string) => {
+  const url = `mailto:${email}`;
+  Linking.canOpenURL(url).then(supported => {
+    if (supported) {
+      Linking.openURL(url);
+    } else {
+      Alert.alert('Error', 'Email is not supported on this device');
+    }
+  }).catch(() => {
+    Alert.alert('Error', 'Could not open email client');
+  });
+};
+
+// Helper function to handle website links
+const handleWebsitePress = (website: string) => {
+  let url = website;
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = 'https://' + url;
+  }
+  Linking.canOpenURL(url).then(supported => {
+    if (supported) {
+      Linking.openURL(url);
+    } else {
+      Alert.alert('Error', 'Cannot open this website');
+    }
+  }).catch(() => {
+    Alert.alert('Error', 'Could not open website');
+  });
 };
 
 // ─── Image Fullscreen Viewer ──────────────────────────────────────────────
@@ -277,21 +311,82 @@ const EditSheet = ({
 const ContactDetailModal = ({
   visible,
   contact,
+  loadingDetail,
   onClose,
   onEdit,
   onDelete,
 }: {
   visible: boolean;
   contact: ContactDetail | null;
+  loadingDetail: boolean;
   onClose: () => void;
   onEdit: (contact: ContactDetail) => void;
   onDelete: (id: string | number) => void;
 }) => {
   const [viewingImage, setViewingImage] = useState<{ uri: string | null; label: string } | null>(null);
 
-  if (!contact) return null;
-const frontImage = contact.frontImageAsString;
-const backImage  = contact.backImageAsString;
+  // Show modal shell while loading
+  if (!visible) return null;
+
+  const InfoRow = ({ icon, label, value, onPress, isClickable = false }: { 
+    icon: string; 
+    label: string; 
+    value: string;
+    onPress?: () => void;
+    isClickable?: boolean;
+  }) => (
+    <TouchableOpacity 
+      style={contactsStyles.detailRow} 
+      onPress={onPress}
+      disabled={!isClickable}
+      activeOpacity={isClickable ? 0.7 : 1}
+    >
+      <View style={contactsStyles.detailIconWrap}>
+        <Icon name={icon} size={15} color={colors.amber} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={contactsStyles.detailRowLabel}>{label}</Text>
+        <Text style={[
+          contactsStyles.detailRowValue,
+          isClickable && { color: colors.navy, textDecorationLine: 'underline' }
+        ]}>{value}</Text>
+      </View>
+      {isClickable && (
+        <Icon name="open-outline" size={14} color={colors.navy} style={{ marginLeft: 8 }} />
+      )}
+    </TouchableOpacity>
+  );
+
+  const SectionCard = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    <View style={contactsStyles.detailSection}>
+      <Text style={contactsStyles.detailSectionTitle}>{title}</Text>
+      {children}
+    </View>
+  );
+
+  if (loadingDetail || !contact) {
+    return (
+      <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+        <View style={contactsStyles.detailOverlay}>
+          <View style={contactsStyles.detailSheet}>
+            <View style={contactsStyles.detailHandle} />
+            <View style={contactsStyles.detailTopBar}>
+              <TouchableOpacity onPress={onClose} style={contactsStyles.detailCloseBtn}>
+                <Icon name="chevron-down" size={22} color={colors.muted} />
+              </TouchableOpacity>
+              <Text style={contactsStyles.detailTopTitle}>Contact Details</Text>
+              <View style={{ width: 40 }} />
+            </View>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+              <ActivityIndicator size="large" color={colors.amber} />
+              <Text style={{ color: colors.muted, marginTop: 16, fontSize: 15 }}>Loading contact details...</Text>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
+
   const personName = contact.personName ?? 'Unknown';
   const initials = getInitials(personName);
   const avatarBg = getAvatarColor(personName);
@@ -301,7 +396,6 @@ const backImage  = contact.backImageAsString;
   const frontUri = buildImageUri(contact.frontImage, contact.frontImageMimeType);
   const backUri  = buildImageUri(contact.backImage,  contact.backImageMimeType);
 
-  // Collect non-empty values
   const phones   = [contact.phoneNumber1, contact.phoneNumber2, contact.phoneNumber3].filter(Boolean) as string[];
   const emails   = [contact.email1, contact.email2].filter(Boolean) as string[];
   const websites = [contact.website1, contact.website2].filter(Boolean) as string[];
@@ -313,25 +407,6 @@ const backImage  = contact.backImageAsString;
       { text: 'Delete', style: 'destructive', onPress: () => { onDelete(contact.id); onClose(); } },
     ]);
   };
-
-  const InfoRow = ({ icon, label, value }: { icon: string; label: string; value: string }) => (
-    <View style={contactsStyles.detailRow}>
-      <View style={contactsStyles.detailIconWrap}>
-        <Icon name={icon} size={15} color={colors.amber} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={contactsStyles.detailRowLabel}>{label}</Text>
-        <Text style={contactsStyles.detailRowValue}>{value}</Text>
-      </View>
-    </View>
-  );
-
-  const SectionCard = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <View style={contactsStyles.detailSection}>
-      <Text style={contactsStyles.detailSectionTitle}>{title}</Text>
-      {children}
-    </View>
-  );
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -351,7 +426,10 @@ const backImage  = contact.backImageAsString;
               <TouchableOpacity style={contactsStyles.detailActionBtn} onPress={() => onEdit(contact)}>
                 <Icon name="create-outline" size={18} color={colors.amber} />
               </TouchableOpacity>
-              <TouchableOpacity style={[contactsStyles.detailActionBtn, { borderColor: 'rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.08)' }]} onPress={handleDelete}>
+              <TouchableOpacity 
+                style={[contactsStyles.detailActionBtn, { borderColor: 'rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.08)' }]} 
+                onPress={handleDelete}
+              >
                 <Icon name="trash-outline" size={18} color={colors.error} />
               </TouchableOpacity>
             </View>
@@ -424,7 +502,14 @@ const backImage  = contact.backImageAsString;
               {phones.length > 0 && (
                 <SectionCard title="Phone Numbers">
                   {phones.map((p, i) => (
-                    <InfoRow key={i} icon="call-outline" label={i === 0 ? 'Primary' : i === 1 ? 'Office' : 'Mobile 2'} value={p} />
+                    <InfoRow 
+                      key={i} 
+                      icon="call-outline" 
+                      label={i === 0 ? 'Primary' : i === 1 ? 'Office' : 'Mobile 2'} 
+                      value={p}
+                      onPress={() => handlePhonePress(p)}
+                      isClickable={true}
+                    />
                   ))}
                 </SectionCard>
               )}
@@ -433,7 +518,14 @@ const backImage  = contact.backImageAsString;
               {emails.length > 0 && (
                 <SectionCard title="Email Addresses">
                   {emails.map((e, i) => (
-                    <InfoRow key={i} icon="mail-outline" label={`Email ${i + 1}`} value={e} />
+                    <InfoRow 
+                      key={i} 
+                      icon="mail-outline" 
+                      label={`Email ${i + 1}`} 
+                      value={e}
+                      onPress={() => handleEmailPress(e)}
+                      isClickable={true}
+                    />
                   ))}
                 </SectionCard>
               )}
@@ -458,7 +550,14 @@ const backImage  = contact.backImageAsString;
               {websites.length > 0 && (
                 <SectionCard title="Websites">
                   {websites.map((w, i) => (
-                    <InfoRow key={i} icon="globe-outline" label={`Website ${i + 1}`} value={w} />
+                    <InfoRow 
+                      key={i} 
+                      icon="globe-outline" 
+                      label={`Website ${i + 1}`} 
+                      value={w}
+                      onPress={() => handleWebsitePress(w)}
+                      isClickable={true}
+                    />
                   ))}
                 </SectionCard>
               )}
@@ -524,17 +623,11 @@ const ContactCard = ({
   const email      = contact.email1 ?? contact.email2 ?? 'No email';
   const formattedDate = formatDate(contact.createdAtUtc);
 
-  const frontUri = buildImageUri(contact.frontImage, contact.frontImageMimeType);
-
   return (
     <TouchableOpacity style={contactsStyles.contactCard} activeOpacity={0.75} onPress={() => onPress(contact)}>
-      {frontUri ? (
-        <Image source={{ uri: frontUri }} style={contactsStyles.contactAvatar} />
-      ) : (
-        <View style={[contactsStyles.contactAvatar, { backgroundColor: avatarBg }]}>
-          <Text style={contactsStyles.contactAvatarText}>{initials}</Text>
-        </View>
-      )}
+      <View style={[contactsStyles.contactAvatar, { backgroundColor: avatarBg }]}>
+        <Text style={contactsStyles.contactAvatarText}>{initials}</Text>
+      </View>
 
       <View style={contactsStyles.contactBody}>
         <Text style={contactsStyles.contactName} numberOfLines={1}>{personName}</Text>
@@ -581,20 +674,32 @@ export default function ContactsScreen() {
   const [activeChip, setActiveChip]     = useState<ChipType>('All');
   const [searchQuery, setSearchQuery]   = useState('');
   const [refreshing, setRefreshing]     = useState(false);
+
   const [selectedContact, setSelectedContact] = useState<ContactDetail | null>(null);
+  const [loadingDetail, setLoadingDetail]     = useState(false);
   const [detailVisible, setDetailVisible]     = useState(false);
-  const [editVisible, setEditVisible]         = useState(false);
-  const [editContact, setEditContact]         = useState<ContactDetail | null>(null);
+
+  const [editVisible, setEditVisible]   = useState(false);
+  const [editContact, setEditContact]   = useState<ContactDetail | null>(null);
   const [saving, setSaving]             = useState(false);
 
-  const { contacts, loading, error, fetchContacts, removeContact, editContact: updateContactHook, loadMore, total } = useContact(1, 50);
+  const {
+    contacts,
+    loading,
+    error,
+    fetchContacts,
+    fetchContact,
+    removeContact,
+    editContact: updateContactHook,
+    loadMore,
+    total,
+  } = useContact(1, 50);
 
- useFocusEffect(
-  useCallback(() => {
-    fetchContacts(); // your API reload function
-  }, [])
-);
-
+  useFocusEffect(
+    useCallback(() => {
+      fetchContacts();
+    }, [])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -603,22 +708,29 @@ export default function ContactsScreen() {
   };
 
   const handleDelete = async (id: string | number) => {
-  try {
-    await removeContact(id);
+    try {
+      await removeContact(id);
+      setDetailVisible(false);
+      setSelectedContact(null);
+      Alert.alert('Success', 'Contact deleted');
+    } catch {
+      Alert.alert('Error', 'Failed to delete contact');
+    }
+  };
 
-    setDetailVisible(false);
-    setSelectedContact(null);
-
-    Alert.alert("Success", "Contact deleted");
-  } catch {
-    Alert.alert("Error", "Failed to delete contact");
-  }
-};
-
-
-  const handleContactPress = (contact: ContactDetail) => {
-    setSelectedContact(contact);
+  const handleContactPress = async (contact: ContactDetail) => {
     setDetailVisible(true);
+    setSelectedContact(null);
+    setLoadingDetail(true);
+    try {
+      const full = await fetchContact(contact.id);
+      setSelectedContact(full);
+    } catch {
+      Alert.alert('Error', 'Failed to load contact details');
+      setDetailVisible(false);
+    } finally {
+      setLoadingDetail(false);
+    }
   };
 
   const handleEdit = (contact: ContactDetail) => {
@@ -634,7 +746,7 @@ export default function ContactsScreen() {
     setSaving(true);
     try {
       await updateContactHook(editContact.id, form);
-      await fetchContacts(); // refresh list
+      await fetchContacts();
       setEditVisible(false);
       Alert.alert('Success', 'Contact updated successfully');
     } catch {
@@ -643,7 +755,6 @@ export default function ContactsScreen() {
       setSaving(false);
     }
   };
-
 
   const filteredContacts = contacts.filter((c) => {
     const matchSearch =
@@ -703,7 +814,6 @@ export default function ContactsScreen() {
             </View>
           </View>
         </View>
-
 
         {/* Search */}
         <View style={contactsStyles.searchWrap}>
@@ -770,7 +880,8 @@ export default function ContactsScreen() {
       <ContactDetailModal
         visible={detailVisible}
         contact={selectedContact}
-        onClose={() => setDetailVisible(false)}
+        loadingDetail={loadingDetail}
+        onClose={() => { setDetailVisible(false); setSelectedContact(null); }}
         onEdit={handleEdit}
         onDelete={handleDelete}
       />

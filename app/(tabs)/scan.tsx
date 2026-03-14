@@ -6,7 +6,6 @@ import {
   KeyboardAvoidingView, Platform, Modal, ScrollView,
 } from 'react-native';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -18,6 +17,8 @@ import { useContact } from '@/hooks/useContact';
 import { colors } from '@/constants/colors';
 import { CameraStyles, scanStyles } from '@/components/styles/scanStyles';
 import { router } from 'expo-router';
+import { Linking } from 'react-native';
+import { useMenuVisibility } from '@/context/MenuVisibilityContext';
 
 // ─────────────────────────────────────────────────────
 // TYPES
@@ -33,6 +34,27 @@ interface ExtendedScannedCard extends ScannedCard {
   fields?: FieldItem[];
   backUri?: string;
   hasBothSides?: boolean;
+}
+
+// ─────────────────────────────────────────────────────
+// API ERROR EXTRACTOR
+// ─────────────────────────────────────────────────────
+function extractApiError(e: any): string {
+  if (!e) return 'An unknown error occurred.';
+  const data = e?.response?.data ?? e?.data ?? null;
+  if (data) {
+    if (typeof data.message === 'string' && data.message.trim()) return data.message.trim();
+    if (data.errors && typeof data.errors === 'object') {
+      const messages: string[] = [];
+      Object.entries(data.errors as Record<string, string[]>).forEach(([key, vals]) => {
+        if (Array.isArray(vals)) vals.forEach(v => messages.push(key === '$' ? v : `${key}: ${v}`));
+      });
+      if (messages.length) return messages.join('\n');
+    }
+    if (typeof data.title === 'string' && data.title.trim()) return data.title.trim();
+  }
+  if (typeof e.message === 'string' && e.message.trim()) return e.message.trim();
+  return 'Something went wrong. Please try again.';
 }
 
 // ─────────────────────────────────────────────────────
@@ -68,37 +90,29 @@ export function smartClassify(value: string): string {
     email: 0, phone: 0, website: 0, pincode: 0,
     name: 0, designation: 0, company: 0, service: 0, address: 0, subcompany: 0, other: 0,
   };
-
   if (EMAIL_RE.test(v)) scores.email += 100;
   if (PINCODE_RE.test(v)) scores.pincode += 90;
   const digits = v.replace(/\D/g, '');
   if (PHONE_RE.test(v) && digits.length >= 7 && digits.length <= 15) scores.phone += 90;
   if (URL_RE.test(v) && !EMAIL_RE.test(v)) scores.website += 85;
-
   const desigMatches = DESIG_KEYWORDS.filter(k => lower.includes(k)).length;
   scores.designation += desigMatches * 30;
-
   const companyMatches = COMPANY_INDICATORS.filter(k => lower.includes(k)).length;
   scores.company += companyMatches * 28;
-
   const serviceMatches = SERVICE_KEYWORDS.filter(k => lower.includes(k)).length;
   scores.service += serviceMatches * 20;
-
   const addrMatches = ADDR_KEYWORDS.filter(k => lower.split(/\s+/).includes(k)).length;
   scores.address += addrMatches * 25;
   if (digits.length === 6 && /[1-9]/.test(v[0])) scores.address += 15;
   if (v.length > 40) scores.address += 10;
-
   if (NAME_RE.test(v) && v.split(' ').length >= 2 && v.split(' ').length <= 4
     && v.length < 30 && desigMatches === 0 && companyMatches === 0) {
     scores.name += 40;
     if (/^(mr|ms|mrs|dr|prof|er)[\s.]/i.test(v)) scores.name += 30;
     if (v === v.toUpperCase() && v.split(' ').length === 1) scores.name -= 20;
   }
-
   const maxScore = Math.max(...Object.values(scores));
   if (maxScore < 10) scores.other += 5;
-
   return Object.entries(scores).sort((a, b) => b[1] - a[1])[0][0];
 }
 
@@ -112,12 +126,33 @@ function reClassifyFields(fields: FieldItem[]): FieldItem[] {
   });
 }
 
+const sendWhatsAppMessage = async (card: ExtendedScannedCard, fields: FieldItem[]) => {
+  const get = (type: string, idx = 0) => fields.filter(f => f.type === type)[idx]?.value || '';
+  const phone = get('phone').replace(/\D/g, '');
+  if (!phone) { Alert.alert("No Phone Number", "Cannot send WhatsApp message without a phone number."); return; }
+  const message =
+`Hi 👋
+
+This is Scanify App.
+
+Here is the scanned contact information:
+
+👤 Name: ${get('name')}
+🏢 Company: ${get('company')}
+💼 Designation: ${get('designation')}
+📧 Email: ${get('email')}
+🌐 Website: ${get('website')}
+📍 Address: ${get('address')}
+
+Saved via Scanify Card Scanner.`;
+  const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  try { await Linking.openURL(url); } catch { Alert.alert("WhatsApp not installed"); }
+};
+
 // ─────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────
-const cleanLine = (l: string) =>
-  l.replace(/[|\\]/g, '').replace(/\s{2,}/g, ' ').trim();
-
+const cleanLine = (l: string) => l.replace(/[|\\]/g, '').replace(/\s{2,}/g, ' ').trim();
 const normalizeAddress = (a: string) =>
   a.replace(/,\s*,+/g, ',').replace(/\s{2,}/g, ' ').replace(/^[,\s]+|[,\s]+$/g, '').trim();
 
@@ -211,108 +246,6 @@ async function uriToBase64(uri: string): Promise<string> {
 }
 
 // ─────────────────────────────────────────────────────
-// IMAGE CROPPER
-// ─────────────────────────────────────────────────────
-function ImageCropper({ uri, onCrop, onCancel }: { uri: string; onCrop: (uri: string) => void; onCancel: () => void }) {
-  const [loading, setLoading] = useState(false);
-  const cropImage = async () => {
-    setLoading(true);
-    try {
-      const result = await ImageManipulator.manipulateAsync(uri, [{ resize: { width: 1200 } }], { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG });
-      onCrop(result.uri);
-    } catch { Alert.alert('Error', 'Failed to process image'); onCancel(); }
-    finally { setLoading(false); }
-  };
-  return (
-    <View style={StyleSheet.absoluteFillObject}>
-      <Image source={{ uri }} style={StyleSheet.absoluteFillObject} contentFit="contain" />
-      <View style={[CameraStyles.overlayTop, { backgroundColor: 'rgba(0,0,0,0.7)' }]} />
-      <View style={[CameraStyles.overlayBottom, { backgroundColor: 'rgba(0,0,0,0.7)' }]} />
-      <View style={[CameraStyles.overlayLeft, { backgroundColor: 'rgba(0,0,0,0.7)' }]} />
-      <View style={[CameraStyles.overlayRight, { backgroundColor: 'rgba(0,0,0,0.7)' }]} />
-      <View style={[CameraStyles.cardFrame, { borderColor: colors.amber, borderWidth: 2 }]} />
-      <View style={CameraStyles.controls}>
-        <TouchableOpacity style={CameraStyles.cancelBtn} onPress={onCancel}>
-          <Ionicons name="close" size={18} color="#fff" /><Text style={CameraStyles.cancelText}>Cancel</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[CameraStyles.captureBtn, { backgroundColor: colors.amber }]} onPress={cropImage} disabled={loading}>
-          {loading ? <ActivityIndicator size="small" color={colors.navy} /> : <><Ionicons name="save" size={20} color={colors.navy} /><Text style={CameraStyles.captureText}>Use</Text></>}
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-// ─────────────────────────────────────────────────────
-// CAMERA SCANNER
-// ─────────────────────────────────────────────────────
-type ScanMode = 'single' | 'front' | 'back';
-
-function CameraScanner({ onCapture, onClose, mode = 'single', onFrontCaptured }: {
-  onCapture: (uri: string) => void; onClose: () => void;
-  mode?: ScanMode; onFrontCaptured?: (uri: string) => void;
-}) {
-  const cameraRef = useRef<CameraView>(null);
-  const [permission, requestPermission] = useCameraPermissions();
-  const [showCrop, setShowCrop] = useState(false);
-  const [capturedUri, setCapturedUri] = useState<string | null>(null);
-
-  if (!permission) return <ActivityIndicator style={{ flex: 1 }} color={colors.amber} />;
-  if (!permission.granted) {
-    return (
-      <View style={[CameraStyles.center, { backgroundColor: colors.phoneBg }]}>
-        <Ionicons name="camera-outline" size={52} color={colors.amber} />
-        <Text style={[CameraStyles.permText, { color: colors.text }]}>Camera permission required</Text>
-        <TouchableOpacity style={[CameraStyles.permBtn, { backgroundColor: colors.amber }]} onPress={requestPermission}>
-          <Text style={{ color: colors.navy, fontWeight: '700', fontSize: 15 }}>Grant Permission</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  const handleCapture = async () => {
-    try {
-      const photo = await cameraRef.current?.takePictureAsync({ quality: 0.95, skipProcessing: false });
-      if (photo?.uri) { setCapturedUri(photo.uri); setShowCrop(true); }
-    } catch (e: any) { Alert.alert('Capture Failed', e.message ?? 'Unknown error'); }
-  };
-
-  const handleCropComplete = (croppedUri: string) => {
-    if (mode === 'front' && onFrontCaptured) onFrontCaptured(croppedUri);
-    else onCapture(croppedUri);
-    setShowCrop(false);
-  };
-
-  if (showCrop && capturedUri)
-    return <ImageCropper uri={capturedUri} onCrop={handleCropComplete} onCancel={() => setShowCrop(false)} />;
-
-  return (
-    <View style={{ flex: 1, backgroundColor: '#000' }}>
-      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
-      <View style={CameraStyles.overlayTop} /><View style={CameraStyles.overlayBottom} />
-      <View style={CameraStyles.overlayLeft} /><View style={CameraStyles.overlayRight} />
-      <View style={[CameraStyles.cardFrame, { borderColor: colors.amber }]} />
-      <View style={[CameraStyles.modeIndicator, { backgroundColor: mode === 'front' ? colors.amber : colors.navy }]}>
-        <Ionicons name={mode === 'front' ? 'arrow-forward' : mode === 'back' ? 'arrow-back' : 'card-outline'} size={14} color="#fff" />
-        <Text style={CameraStyles.modeText}>{mode === 'front' ? 'FRONT SIDE' : mode === 'back' ? 'BACK SIDE' : 'SINGLE CARD'}</Text>
-      </View>
-      <View style={CameraStyles.hint}>
-        <Ionicons name="card-outline" size={15} color="#fff" style={{ marginRight: 6 }} />
-        <Text style={CameraStyles.hintText}>{mode === 'front' ? '📸 Scan FRONT side' : mode === 'back' ? '📸 Scan BACK side' : 'Align card inside frame'}</Text>
-      </View>
-      <View style={CameraStyles.controls}>
-        <TouchableOpacity style={CameraStyles.cancelBtn} onPress={onClose}>
-          <Ionicons name="close" size={18} color="#fff" /><Text style={CameraStyles.cancelText}>Cancel</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[CameraStyles.captureBtn, { backgroundColor: colors.amber }]} onPress={handleCapture}>
-          <Ionicons name="camera" size={20} color={colors.navy} /><Text style={CameraStyles.captureText}>Capture</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-// ─────────────────────────────────────────────────────
 // FIELD TYPE META
 // ─────────────────────────────────────────────────────
 const FieldTypeColors: Record<string, string> = {
@@ -344,11 +277,10 @@ const FieldTypeIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
 };
 
 const ALL_FIELD_TYPES = ['name', 'designation', 'company', 'subcompany', 'phone', 'email', 'website', 'address', 'service', 'pincode', 'other'];
-
 const fieldLabel = (type: string) => type === 'subcompany' ? 'Sub Company' : type.charAt(0).toUpperCase() + type.slice(1);
 
 // ─────────────────────────────────────────────────────
-// TYPE PICKER MODAL  (bottom sheet style)
+// TYPE PICKER MODAL
 // ─────────────────────────────────────────────────────
 function TypePickerModal({ visible, currentType, onSelect, onClose }: {
   visible: boolean; currentType: string; onSelect: (t: string) => void; onClose: () => void;
@@ -485,10 +417,86 @@ function AddFieldRow({ onAdd }: { onAdd: (type: string, value: string) => void }
 }
 
 // ─────────────────────────────────────────────────────
+// CAMERA SCANNER
+// ─────────────────────────────────────────────────────
+function CameraScanner({ onCapture, onClose }: {
+  onCapture: (uri: string) => void;
+  onClose: () => void;
+}) {
+  const cameraRef = useRef<CameraView>(null);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [capturing, setCapturing] = useState(false);
+
+  if (!permission) return <ActivityIndicator style={{ flex: 1 }} color={colors.amber} />;
+
+  if (!permission.granted) {
+    return (
+      <View style={[CameraStyles.center, { backgroundColor: colors.phoneBg }]}>
+        <Ionicons name="camera-outline" size={52} color={colors.amber} />
+        <Text style={[CameraStyles.permText, { color: colors.text }]}>Camera permission required</Text>
+        <TouchableOpacity style={[CameraStyles.permBtn, { backgroundColor: colors.amber }]} onPress={requestPermission}>
+          <Text style={{ color: colors.navy, fontWeight: '700', fontSize: 15 }}>Grant Permission</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const handleCapture = async () => {
+    if (capturing) return;
+    setCapturing(true);
+    try {
+      const photo = await cameraRef.current?.takePictureAsync({ quality: 0.95, skipProcessing: false });
+      if (photo?.uri) {
+        const processed = await ImageManipulator.manipulateAsync(
+          photo.uri,
+          [{ resize: { width: 1200 } }],
+          { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
+        );
+        onCapture(processed.uri);
+      }
+    } catch (e: any) {
+      Alert.alert('Capture Failed', e.message ?? 'Unknown error');
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: '#000' }}>
+      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
+      <View style={CameraStyles.overlayTop} />
+      <View style={CameraStyles.overlayBottom} />
+      <View style={CameraStyles.overlayLeft} />
+      <View style={CameraStyles.overlayRight} />
+      <View style={[CameraStyles.cardFrame, { borderColor: colors.amber }]} />
+      <View style={CameraStyles.hint}>
+        <Ionicons name="card-outline" size={15} color="#fff" style={{ marginRight: 6 }} />
+        <Text style={CameraStyles.hintText}>Align business card inside the frame</Text>
+      </View>
+      <View style={CameraStyles.controls}>
+        <TouchableOpacity style={CameraStyles.cancelBtn} onPress={onClose}>
+          <Ionicons name="close" size={18} color="#fff" />
+          <Text style={CameraStyles.cancelText}>Cancel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[CameraStyles.captureBtn, { backgroundColor: colors.amber }]}
+          onPress={handleCapture}
+          disabled={capturing}
+        >
+          {capturing
+            ? <ActivityIndicator size="small" color={colors.navy} />
+            : <><Ionicons name="camera" size={20} color={colors.navy} /><Text style={CameraStyles.captureText}>Capture</Text></>
+          }
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────────────
 // STYLES
 // ─────────────────────────────────────────────────────
 const S = StyleSheet.create({
-  // Edit row
   editRow: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fff', borderRadius: 10,
@@ -506,17 +514,14 @@ const S = StyleSheet.create({
   editInput: {
     flex: 1, fontSize: 13, color: colors.text,
     paddingVertical: 5, paddingHorizontal: 8,
-    backgroundColor: '#f8fafc', borderRadius: 7,
-    minHeight: 34,
+    backgroundColor: '#f8fafc', borderRadius: 7, minHeight: 34,
   },
   delBtn: { width: 26, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  // Add row
   addRow: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fff', borderRadius: 10,
     paddingHorizontal: 10, paddingVertical: 8,
-    marginTop: 6, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.amber,
-    gap: 6,
+    marginTop: 6, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.amber, gap: 6,
   },
   addInput: {
     flex: 1, fontSize: 13, color: colors.text,
@@ -524,7 +529,6 @@ const S = StyleSheet.create({
     backgroundColor: '#f8fafc', borderRadius: 7, minHeight: 34,
   },
   addBtn: { width: 36, height: 36, borderRadius: 9, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  // Modal (bottom sheet)
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   typePickerBox: {
     backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22,
@@ -535,7 +539,6 @@ const S = StyleSheet.create({
   typeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 8, borderRadius: 10, gap: 12, marginBottom: 2 },
   typeIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   typeLabel: { flex: 1, fontSize: 14, fontWeight: '600' },
-  // Action bar — BELOW image, full width, navy background, always visible
   actionBar: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 10, paddingVertical: 8,
@@ -547,7 +550,6 @@ const S = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.14)', minHeight: 38,
   },
   actionBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
-  // Re-classify banner
   reclassifyBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: colors.amber + '15', borderRadius: 9,
@@ -555,7 +557,6 @@ const S = StyleSheet.create({
     marginBottom: 10, borderWidth: 1, borderColor: colors.amber + '35',
   },
   reclassifyText: { fontSize: 11, color: colors.amberDark, flex: 1, lineHeight: 15 },
-  // Bottom sticky save/cancel bar
   stickyBar: { flexDirection: 'row', gap: 8, marginTop: 14, marginBottom: 2 },
   stickyCancel: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -568,6 +569,38 @@ const S = StyleSheet.create({
     gap: 6, paddingVertical: 13, borderRadius: 11, backgroundColor: colors.amber,
   },
   stickySaveText: { fontSize: 13, fontWeight: '700', color: colors.navy },
+  scanBtnWrap: { margin: 16, borderRadius: 16, overflow: 'hidden' },
+  scanBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, paddingVertical: 18, borderRadius: 16, backgroundColor: colors.amber,
+  },
+  scanBtnText: { fontSize: 16, fontWeight: '800', color: colors.navy, letterSpacing: 0.4 },
+  // ── Dual image styles ──
+  dualImageWrap: { flexDirection: 'row', height: 160, backgroundColor: '#000', position: 'relative' },
+  dualImageHalf: { flex: 1, position: 'relative', overflow: 'hidden' },
+  dualImage: { width: '100%', height: '100%' },
+  dualDivider: { width: 2, backgroundColor: colors.amber },
+  imageSideLabel: {
+    position: 'absolute', bottom: 6, left: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: colors.amber + 'cc', borderRadius: 5,
+    paddingHorizontal: 6, paddingVertical: 3,
+  },
+  imageSideLabelText: { fontSize: 9, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
+  dualBadge: {
+    position: 'absolute', top: 8, left: '50%', transform: [{ translateX: -44 }],
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: colors.amber, borderRadius: 10,
+    paddingHorizontal: 8, paddingVertical: 3,
+  },
+  dualBadgeText: { fontSize: 10, fontWeight: '700', color: colors.navy },
+  dualInfoBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: colors.amber + '15', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 8, marginBottom: 10,
+    borderWidth: 1, borderColor: colors.amber + '40',
+  },
+  dualInfoText: { fontSize: 11, color: colors.amberDark, flex: 1, fontWeight: '600' },
 });
 
 // ─────────────────────────────────────────────────────
@@ -576,18 +609,27 @@ const S = StyleSheet.create({
 export default function ScanScreen() {
   const { cards, addCard, deleteCard, updateCard } = useCards();
   const { addContact, loading: savingContact } = useContact();
+  const { setMenuVisible } = useMenuVisibility(); // ← controls floating button visibility
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const [processingStatus, setProcessingStatus] = useState('');
-  const [processingCount, setProcessingCount] = useState({ done: 0, total: 0 });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [localFields, setLocalFields] = useState<FieldItem[]>([]);
   const [showCamera, setShowCamera] = useState(false);
-  const [cameraMode, setCameraMode] = useState<'single' | 'front' | 'back'>('single');
-  const [frontImage, setFrontImage] = useState<string | null>(null);
-  const [scanType, setScanType] = useState<'single' | 'dual' | 'multi'>('single');
+  const [pendingFrontUri, setPendingFrontUri] = useState<string | null>(null);
+
+  // ── Open camera: hide floating button ──
+  const openCamera = useCallback(() => {
+    setMenuVisible(false);
+    setShowCamera(true);
+  }, [setMenuVisible]);
+
+  // ── Close camera: restore floating button ──
+  const closeCamera = useCallback(() => {
+    setShowCamera(false);
+    setMenuVisible(true);
+  }, [setMenuVisible]);
 
   // ── OCR ──
   const runOCR = async (uri: string): Promise<string> => {
@@ -603,88 +645,94 @@ export default function ScanScreen() {
     } catch { return ''; }
   };
 
-  const processSingle = async (uri: string, idx: number, total: number): Promise<ExtendedScannedCard | null> => {
-    setProcessingStatus(`Processing ${idx + 1} of ${total}...`);
-    setProcessingCount({ done: idx, total });
-    try {
-      const processed = await ImageManipulator.manipulateAsync(uri, [{ resize: { width: 1200 } }], { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG });
-      const text = await runOCR(processed.uri);
-      if (!text.trim()) return null;
-      return {
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2) + idx,
-        uri: processed.uri, data: { fullText: text } as OCRData,
-        fields: extractAllFields(text), tags: [], createdAt: new Date().toISOString(), exported: false,
-      };
-    } catch { return null; }
-  };
-
-  const processDualSide = async (frontUri: string, backUri: string): Promise<ExtendedScannedCard | null> => {
-    setProcessingStatus('Processing front and back...');
-    try {
-      const [pFront, pBack] = await Promise.all([
-        ImageManipulator.manipulateAsync(frontUri, [{ resize: { width: 1200 } }], { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }),
-        ImageManipulator.manipulateAsync(backUri, [{ resize: { width: 1200 } }], { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }),
-      ]);
-      const [frontText, backText] = await Promise.all([runOCR(pFront.uri), runOCR(pBack.uri)]);
-      if (!frontText.trim() && !backText.trim()) return null;
-      const frontFields = extractAllFields(frontText);
-      const backFields = extractAllFields(backText);
-      const merged = [...frontFields];
-      const seen = new Set(frontFields.map(f => f.value.toLowerCase()));
-      backFields.forEach(f => { if (!seen.has(f.value.toLowerCase())) { merged.push(f); seen.add(f.value.toLowerCase()); } });
-      merged.forEach((f, i) => { f.order = i; });
-      return {
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
-        uri: pFront.uri, backUri: pBack.uri,
-        data: { fullText: `${frontText}\n\n--- BACK ---\n\n${backText}` } as OCRData,
-        fields: merged, tags: [], createdAt: new Date().toISOString(), exported: false, hasBothSides: true,
-      };
-    } catch { return null; }
-  };
-
-  const handleSingleCamera = () => { setScanType('single'); setCameraMode('single'); setShowCamera(true); };
-  const handleDualCamera = () => { setScanType('dual'); setCameraMode('front'); setFrontImage(null); setShowCamera(true); };
-  const handleMultiCamera = () => { scanMultiple(); };
-  const handleFrontCaptured = (uri: string) => { setFrontImage(uri); setCameraMode('back'); };
-
-  const handleBackCaptured = async (uri: string) => {
-    setShowCamera(false); setIsProcessing(true);
-    try {
-      if (frontImage) {
-        const card = await processDualSide(frontImage, uri);
-        if (!card) { Alert.alert('No Text Detected', 'Could not read text from images'); return; }
-        addCard(card); setExpandedId(card.id);
-      }
-    } catch (e: any) { Alert.alert('Failed', e.message ?? 'Unknown error'); }
-    finally { setIsProcessing(false); setProcessingStatus(''); setProcessingCount({ done: 0, total: 0 }); setFrontImage(null); }
-  };
-
-  const handleSingleCaptured = async (uri: string) => {
-    setShowCamera(false); setIsProcessing(true);
-    try {
-      const card = await processSingle(uri, 0, 1);
-      if (!card) { Alert.alert('No Text Detected', 'Could not read text from image'); return; }
-      addCard(card); setExpandedId(card.id);
-    } catch (e: any) { Alert.alert('Failed', e.message ?? 'Unknown error'); }
-    finally { setIsProcessing(false); setProcessingStatus(''); setProcessingCount({ done: 0, total: 0 }); }
-  };
-
-  const scanMultiple = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) { Alert.alert('Permission Required', 'Media library access needed.'); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1, allowsMultipleSelection: true, selectionLimit: 15 });
-    if (result.canceled || !result.assets?.length) return;
-    const total = result.assets.length;
+  // ── Build & store a card from one or two URIs ──
+  const buildAndStoreCard = useCallback(async (frontUri: string, backUri?: string) => {
     setIsProcessing(true);
-    let successCount = 0, firstNewId: string | null = null;
-    for (let i = 0; i < total; i++) {
-      const card = await processSingle(result.assets[i].uri, i, total);
-      if (card) { addCard(card); if (!firstNewId) firstNewId = card.id; successCount++; }
+    try {
+      const frontText = await runOCR(frontUri);
+      const backText  = backUri ? await runOCR(backUri) : '';
+
+      if (!frontText.trim() && !backText.trim()) {
+        Alert.alert('No Text Detected', 'Could not read text from the image. Try again with better lighting.');
+        return;
+      }
+
+      let fields: FieldItem[];
+      let fullText: string;
+
+      if (backUri && backText.trim()) {
+        // Merge front + back, deduplicate
+        const frontFields = extractAllFields(frontText);
+        const backFields  = extractAllFields(backText);
+        const seen = new Set(frontFields.map(f => f.value.toLowerCase()));
+        const merged = [...frontFields];
+        backFields.forEach(f => {
+          if (!seen.has(f.value.toLowerCase())) { merged.push(f); seen.add(f.value.toLowerCase()); }
+        });
+        merged.forEach((f, i) => { f.order = i; });
+        fields   = merged;
+        fullText = `${frontText}\n\n--- BACK ---\n\n${backText}`;
+      } else {
+        fields   = extractAllFields(frontText);
+        fullText = frontText;
+      }
+
+      const card: ExtendedScannedCard = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+        uri: frontUri,
+        ...(backUri ? { backUri, hasBothSides: true } : {}),
+        data: { fullText } as OCRData,
+        fields,
+        tags: [],
+        createdAt: new Date().toISOString(),
+        exported: false,
+      };
+
+      addCard(card);
+      setExpandedId(card.id);
+      setLocalFields((card.fields || []).map(f => ({ ...f })));
+      setEditingCardId(card.id);
+    } catch (e: any) {
+      Alert.alert('Processing Failed', e.message ?? 'Unknown error');
+    } finally {
+      setIsProcessing(false);
     }
-    setIsProcessing(false); setProcessingStatus(''); setProcessingCount({ done: 0, total: 0 });
-    if (successCount === 0) Alert.alert('No Cards Extracted', 'Could not read text from any images.');
-    else { if (firstNewId) setExpandedId(firstNewId); Alert.alert('Done', `Scanned ${successCount} of ${total} card${total > 1 ? 's' : ''}.`); }
-  };
+  }, [addCard]);
+
+  // ── Camera captured ──
+  // Closes camera (restores menu), then asks about back side on first capture.
+  const handleCaptured = useCallback(async (uri: string) => {
+    // Always close camera + restore floating button first
+    setShowCamera(false);
+    setMenuVisible(true);
+
+    if (pendingFrontUri) {
+      // BACK side — merge with stored front
+      const front = pendingFrontUri;
+      setPendingFrontUri(null);
+      await buildAndStoreCard(front, uri);
+    } else {
+      // FRONT side — ask if there is a back
+      Alert.alert(
+        'Front Side Captured',
+        'Does this card have a back side to scan?',
+        [
+          {
+            text: 'No, Done',
+            style: 'default',
+            onPress: () => buildAndStoreCard(uri),
+          },
+          {
+            text: 'Yes, Scan Back',
+            onPress: () => {
+              setPendingFrontUri(uri);
+              openCamera(); // hides menu again for back-side scan
+            },
+          },
+        ]
+      );
+    }
+  }, [pendingFrontUri, buildAndStoreCard, openCamera, setMenuVisible]);
 
   // ── INLINE EDIT ──
   const startEditing = useCallback((card: ExtendedScannedCard) => {
@@ -698,32 +746,19 @@ export default function ScanScreen() {
     setLocalFields([]);
   }, []);
 
-  /**
-   * saveEditing — two steps:
-   * 1. updateCard: persist fields to local store (cast through unknown to bypass type mismatch)
-   * 2. addContact API call with updated field values + subCompanyName
-   */
   const saveEditing = useCallback(async (cardId: string) => {
     const card = (cards as ExtendedScannedCard[]).find(c => c.id === cardId);
     if (!card) return;
 
     const reordered = localFields.map((f, i) => ({ ...f, order: i }));
-
-    // Step 1 — persist to store
-    // Use unknown cast to avoid TypeScript rejecting the fields property
     const updatedCard = { ...card, fields: reordered } as unknown as ScannedCard;
     updateCard(cardId, updatedCard);
 
-    // Step 2 — call API
     setIsSavingEdit(true);
     try {
       const get = (type: string, idx = 0) => reordered.filter(f => f.type === type)[idx]?.value || '';
-
-      // Single image → front only; dual side → front + back
       const frontImageAsString = await uriToBase64(card.uri);
-      const backImageAsString  = card.hasBothSides && card.backUri
-        ? await uriToBase64(card.backUri)
-        : '';
+      const backImageAsString  = card.hasBothSides && card.backUri ? await uriToBase64(card.backUri) : '';
 
       await addContact({
         companyName:        get('company'),
@@ -747,16 +782,31 @@ export default function ScanScreen() {
         backImageMimeType:  'image/jpeg',
       });
 
-     Alert.alert('✅ Saved!', 'Card updated and contact synced.', [
-  {
-    text: 'OK',
-    onPress: () => router.replace('/(tabs)/contacts')
-  }
-]);
+     Alert.alert(
+  'Contact Saved ✅',
+  'Do you want to send this contact info via WhatsApp?',
+  [
+    {
+      text: 'No',
+      style: 'cancel',
+      onPress: () => {
+        deleteCard(card.id);   // clear card
+        router.replace('/(tabs)/contacts');
+      },
+    },
+    {
+      text: 'Send WhatsApp',
+      onPress: () => {
+        sendWhatsAppMessage(card, reordered);
+        deleteCard(card.id);   // clear card
+        router.replace('/(tabs)/contacts');
+      },
+    },
+  ]
+);
 
     } catch (e: any) {
-      // Store save succeeded; warn about API failure only
-      Alert.alert('Saved Locally', `Fields saved. Contact sync error: ${e?.message || 'Unknown'}`);
+      Alert.alert('Save Failed', extractApiError(e));
     } finally {
       setIsSavingEdit(false);
       setEditingCardId(null);
@@ -764,29 +814,34 @@ export default function ScanScreen() {
     }
   }, [cards, localFields, updateCard, addContact]);
 
-  const updateLocalField   = useCallback((id: string, value: string)   => setLocalFields(prev => prev.map(f => f.id === id ? { ...f, value } : f)), []);
-  const deleteLocalField   = useCallback((id: string)                   => setLocalFields(prev => prev.filter(f => f.id !== id)), []);
+  const updateLocalField     = useCallback((id: string, value: string)   => setLocalFields(prev => prev.map(f => f.id === id ? { ...f, value } : f)), []);
+  const deleteLocalField     = useCallback((id: string)                   => setLocalFields(prev => prev.filter(f => f.id !== id)), []);
   const changeLocalFieldType = useCallback((id: string, newType: string) => setLocalFields(prev => prev.map(f => f.id === id ? { ...f, type: newType } : f)), []);
-  const addLocalField      = useCallback((type: string, value: string)  => setLocalFields(prev => [...prev, { id: `${type}-${Date.now()}`, type, value, order: prev.length }]), []);
+  const addLocalField        = useCallback((type: string, value: string) => setLocalFields(prev => [...prev, { id: `${type}-${Date.now()}`, type, value, order: prev.length }]), []);
 
   const handleSmartReclassify = useCallback(() => {
     const reclassified = reClassifyFields(localFields);
     const changedCount = reclassified.filter((f, i) => f.type !== localFields[i]?.type).length;
     setLocalFields(reclassified);
-    if (changedCount > 0) Alert.alert('Re-classified ✨', `${changedCount} field${changedCount > 1 ? 's were' : ' was'} auto-fixed.`);
-    else Alert.alert('All Good!', 'All field types look correct.');
-  }, [localFields]);
+    const card = (cards as ExtendedScannedCard[]).find(c => c.id === editingCardId);
+    Alert.alert(
+      changedCount > 0 ? `Re-classified ✨ (${changedCount} fixed)` : 'All Good!',
+      changedCount > 0
+        ? `${changedCount} field${changedCount > 1 ? 's were' : ' was'} auto-fixed.`
+        : 'All field types look correct.',
+      [
+        { text: 'OK', style: 'cancel' },
+        ...(card ? [{ text: 'Send WhatsApp', onPress: () => sendWhatsAppMessage(card, reclassified) }] : []),
+      ]
+    );
+  }, [localFields, cards, editingCardId]);
 
   const handleSaveContact = async (card: ExtendedScannedCard) => {
     const fields = card.fields || [];
     const get = (type: string, idx = 0) => fields.filter(f => f.type === type)[idx]?.value || '';
     try {
-      // Single image → front only; dual side → front + back
       const frontImageAsString = await uriToBase64(card.uri);
-      const backImageAsString  = card.hasBothSides && card.backUri
-        ? await uriToBase64(card.backUri)
-        : '';
-
+      const backImageAsString  = card.hasBothSides && card.backUri ? await uriToBase64(card.backUri) : '';
       await addContact({
         companyName:        get('company'),
         subCompanyName:     get('subcompany'),
@@ -808,10 +863,32 @@ export default function ScanScreen() {
         backImageAsString,
         backImageMimeType:  'image/jpeg',
       });
-   Alert.alert('Saved!', 'Contact saved successfully.', [
-  { text: 'OK', onPress: () => router.replace('/(tabs)/contacts') },
-]);
-    } catch (e: any) { Alert.alert('Save Failed', e?.message || 'Could not save contact.'); }
+     Alert.alert(
+  'Contact Saved ✅',
+  'Contact saved successfully. Do you want to send this contact via WhatsApp?',
+  [
+    {
+      text: 'No',
+      style: 'cancel',
+      onPress: () => {
+        deleteCard(card.id);   // remove scanned card
+        router.replace('/(tabs)/contacts');
+      }
+    },
+    {
+      text: 'Send WhatsApp',
+      onPress: () => {
+        sendWhatsAppMessage(card, fields);  // send message
+        deleteCard(card.id);                // remove scanned card
+        router.replace('/(tabs)/contacts');
+      }
+    }
+  ]
+);
+
+    } catch (e: any) {
+      Alert.alert('Save Failed', extractApiError(e));
+    }
   };
 
   const copyAll = async (card: ExtendedScannedCard) => {
@@ -836,22 +913,34 @@ export default function ScanScreen() {
 
     return (
       <View style={[scanStyles.card, { backgroundColor: colors.white }]}>
-        {/* Image */}
-        {item.hasBothSides ? (
-          <View style={scanStyles.dualImageContainer}>
-            <Image source={{ uri: item.uri }} style={scanStyles.dualImage} contentFit="cover" />
-            <View style={scanStyles.imageDivider} />
-            <Image source={{ uri: item.backUri }} style={scanStyles.dualImage} contentFit="cover" />
-            <View style={[scanStyles.dualBadge, { backgroundColor: colors.amber }]}>
-              <Ionicons name="swap-horizontal" size={12} color={colors.navy} />
-              <Text style={scanStyles.dualBadgeText}>Front & Back</Text>
+        {/* Image — single or dual side */}
+        {item.hasBothSides && item.backUri ? (
+          <View style={S.dualImageWrap}>
+            <View style={S.dualImageHalf}>
+              <Image source={{ uri: item.uri }} style={S.dualImage} contentFit="cover" />
+              <View style={S.imageSideLabel}>
+                <Ionicons name="arrow-forward-circle" size={12} color="#fff" />
+                <Text style={S.imageSideLabelText}>FRONT</Text>
+              </View>
+            </View>
+            <View style={S.dualDivider} />
+            <View style={S.dualImageHalf}>
+              <Image source={{ uri: item.backUri }} style={S.dualImage} contentFit="cover" />
+              <View style={[S.imageSideLabel, { backgroundColor: colors.navy + 'cc' }]}>
+                <Ionicons name="arrow-back-circle" size={12} color="#fff" />
+                <Text style={S.imageSideLabelText}>BACK</Text>
+              </View>
+            </View>
+            <View style={S.dualBadge}>
+              <Ionicons name="swap-horizontal" size={11} color={colors.navy} />
+              <Text style={S.dualBadgeText}>Front & Back</Text>
             </View>
           </View>
         ) : (
           <Image source={{ uri: item.uri }} style={scanStyles.cardImage} contentFit="cover" />
         )}
 
-        {/* Delete card button */}
+        {/* Delete */}
         <TouchableOpacity style={scanStyles.deleteBtn}
           onPress={() => Alert.alert('Delete Card', 'Remove this card?', [
             { text: 'Cancel', style: 'cancel' },
@@ -860,9 +949,8 @@ export default function ScanScreen() {
           <Ionicons name="trash-outline" size={16} color={colors.white} />
         </TouchableOpacity>
 
-        {/* ── ACTION BAR — sits below image, full width, solid background ── */}
+        {/* Action bar */}
         <View style={S.actionBar}>
-          {/* Copy All */}
           <TouchableOpacity style={S.actionBtn} onPress={() => copyAll(item)}>
             <Ionicons name="copy-outline" size={13} color="#fff" />
             <Text style={S.actionBtnText}>Copy All</Text>
@@ -870,13 +958,11 @@ export default function ScanScreen() {
 
           {isEditing ? (
             <>
-              {/* Cancel */}
               <TouchableOpacity style={[S.actionBtn, { backgroundColor: '#ef4444cc' }]}
                 onPress={cancelEditing} disabled={isSavingEdit}>
                 <Ionicons name="close" size={13} color="#fff" />
                 <Text style={S.actionBtnText}>Cancel</Text>
               </TouchableOpacity>
-              {/* Save */}
               <TouchableOpacity style={[S.actionBtn, { backgroundColor: colors.amber, flex: 1.5 }]}
                 onPress={() => saveEditing(item.id)} disabled={isSavingEdit}>
                 {isSavingEdit
@@ -886,11 +972,19 @@ export default function ScanScreen() {
               </TouchableOpacity>
             </>
           ) : (
-            <TouchableOpacity style={[S.actionBtn, { backgroundColor: colors.amber }]}
-              onPress={() => startEditing(item)}>
-              <Ionicons name="create-outline" size={13} color={colors.navy} />
-              <Text style={[S.actionBtnText, { color: colors.navy }]}>Edit</Text>
-            </TouchableOpacity>
+            <>
+              {/* Next Card — uses openCamera so menu hides again */}
+              <TouchableOpacity style={[S.actionBtn, { backgroundColor: 'rgba(255,255,255,0.22)' }]}
+                onPress={openCamera}>
+                <Ionicons name="scan-outline" size={13} color="#fff" />
+                <Text style={S.actionBtnText}>Next Card</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[S.actionBtn, { backgroundColor: colors.amber }]}
+                onPress={() => startEditing(item)}>
+                <Ionicons name="create-outline" size={13} color={colors.navy} />
+                <Text style={[S.actionBtnText, { color: colors.navy }]}>Edit</Text>
+              </TouchableOpacity>
+            </>
           )}
         </View>
 
@@ -916,11 +1010,12 @@ export default function ScanScreen() {
         {isExpanded && (
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={120}>
             <View style={[scanStyles.details, { paddingBottom: isEditing ? 8 : 16 }]}>
-              {/* Dual badge */}
+
+              {/* Dual side info banner */}
               {item.hasBothSides && (
-                <View style={[scanStyles.infoBadge, { backgroundColor: colors.amber + '15' }]}>
-                  <Ionicons name="information-circle-outline" size={14} color={colors.amber} />
-                  <Text style={[scanStyles.infoText, { color: colors.amber }]}>Data merged from front & back sides</Text>
+                <View style={S.dualInfoBanner}>
+                  <Ionicons name="swap-horizontal" size={14} color={colors.amber} />
+                  <Text style={S.dualInfoText}>Fields merged from front & back sides</Text>
                 </View>
               )}
 
@@ -965,10 +1060,10 @@ export default function ScanScreen() {
                   <TouchableOpacity
                     style={[scanStyles.rawButton, { backgroundColor: colors.amber + '15', borderColor: colors.amber, marginTop: 4 }]}
                     onPress={() => handleSaveContact(item)} disabled={savingContact}>
-                    {savingContact ? <ActivityIndicator size="small" color={colors.amber} /> : (
-                      <><Ionicons name="person-add-outline" size={14} color={colors.amberDark} />
-                      <Text style={[scanStyles.rawButtonText, { color: colors.amberDark }]}>Save as Contact</Text></>
-                    )}
+                    {savingContact
+                      ? <ActivityIndicator size="small" color={colors.amber} />
+                      : <><Ionicons name="person-add-outline" size={14} color={colors.amberDark} /><Text style={[scanStyles.rawButtonText, { color: colors.amberDark }]}>Save as Contact</Text></>
+                    }
                   </TouchableOpacity>
                   {item.data && (
                     <TouchableOpacity
@@ -987,11 +1082,9 @@ export default function ScanScreen() {
     );
   };
 
+  // ── Camera full-screen — menu is already hidden ──
   if (showCamera) {
-    if (scanType === 'dual') {
-      return <CameraScanner mode={cameraMode} onFrontCaptured={handleFrontCaptured} onCapture={handleBackCaptured} onClose={() => { setShowCamera(false); setFrontImage(null); }} />;
-    }
-    return <CameraScanner mode="single" onCapture={handleSingleCaptured} onClose={() => setShowCamera(false)} />;
+    return <CameraScanner onCapture={handleCaptured} onClose={closeCamera} />;
   }
 
   return (
@@ -1009,40 +1102,22 @@ export default function ScanScreen() {
         </View>
       </View>
 
-      {/* Scan Options */}
-      <View style={scanStyles.scanOptions}>
-        {[
-          { label: 'Single', sub: 'One side', icon: 'camera', bg: colors.amberLight, color: colors.amberDark, onPress: handleSingleCamera },
-          { label: 'Dual', sub: 'Front & Back', icon: 'camera-reverse', bg: colors.leadBg, color: colors.lead, onPress: handleDualCamera },
-          { label: 'Multi', sub: 'Up to 15', icon: 'albums', bg: colors.partnerBg, color: colors.partner, onPress: handleMultiCamera },
-        ].map(opt => (
-          <TouchableOpacity key={opt.label} style={[scanStyles.optionBtn, { backgroundColor: colors.white }]} onPress={opt.onPress} disabled={isProcessing}>
-            <View style={[scanStyles.optionIcon, { backgroundColor: opt.bg }]}>
-              <Ionicons name={opt.icon as any} size={28} color={opt.color} />
-            </View>
-            <Text style={[scanStyles.optionLabel, { color: colors.text }]}>{opt.label}</Text>
-            <Text style={[scanStyles.optionSub, { color: colors.muted }]}>{opt.sub}</Text>
-          </TouchableOpacity>
-        ))}
+      {/* Big Scan Button */}
+      <View style={S.scanBtnWrap}>
+        <TouchableOpacity
+          style={S.scanBtn}
+          onPress={openCamera}
+          disabled={isProcessing}
+          activeOpacity={0.82}
+        >
+          {isProcessing
+            ? <><ActivityIndicator size="small" color={colors.navy} /><Text style={S.scanBtnText}>Processing...</Text></>
+            : <><Ionicons name="camera" size={26} color={colors.navy} /><Text style={S.scanBtnText}>Scan Card</Text></>
+          }
+        </TouchableOpacity>
       </View>
 
-      {/* Processing */}
-      {isProcessing && (
-        <View style={[scanStyles.processingBox, { backgroundColor: colors.white }]}>
-          <ActivityIndicator size="large" color={colors.amber} />
-          <Text style={[scanStyles.processingText, { color: colors.amber }]}>{processingStatus || 'Processing...'}</Text>
-          {processingCount.total > 1 && (
-            <View style={scanStyles.progressContainer}>
-              <View style={[scanStyles.progressBar, { backgroundColor: colors.border }]}>
-                <View style={[scanStyles.progressFill, { backgroundColor: colors.amber, width: `${Math.round((processingCount.done / processingCount.total) * 100)}%` }]} />
-              </View>
-              <Text style={[scanStyles.progressText, { color: colors.muted }]}>{processingCount.done}/{processingCount.total}</Text>
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* List */}
+      {/* Cards list */}
       <FlatList
         data={cards as ExtendedScannedCard[]}
         keyExtractor={item => item.id}
@@ -1056,7 +1131,7 @@ export default function ScanScreen() {
               <Ionicons name="scan-outline" size={48} color={colors.amberDark} />
             </View>
             <Text style={[scanStyles.emptyTitle, { color: colors.text }]}>No cards scanned yet</Text>
-            <Text style={[scanStyles.emptyText, { color: colors.muted }]}>Use Single, Dual, or Multi to scan business cards</Text>
+            <Text style={[scanStyles.emptyText, { color: colors.muted }]}>Tap "Scan Card" to get started</Text>
           </View>
         ) : null}
       />
