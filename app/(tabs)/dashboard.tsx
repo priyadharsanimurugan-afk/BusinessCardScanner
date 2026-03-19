@@ -23,6 +23,7 @@ import { useDashboard } from "@/hooks/useDashboard";
 import { useProfile } from "@/hooks/useProfile";
 import { exportAndShareContacts } from "@/utils/exportcontacts";
 import { LinearGradient } from 'expo-linear-gradient';
+import { getRoles } from "@/utils/tokenStorage";
 // ^^^ Import the new helper instead of using exportContacts + FileSystem directly.
 //     This removes the FileSystem.EncodingType / cacheDirectory TS errors entirely.
 
@@ -479,6 +480,7 @@ export default function DashboardScreen() {
   const [selectedContact, setSelectedContact] = useState<any>(null);
   const [detailVisible, setDetailVisible] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
  useFocusEffect(
   useCallback(() => {
@@ -486,6 +488,17 @@ export default function DashboardScreen() {
   }, [])
 );
 
+
+useEffect(() => {
+  const checkRole = async () => {
+    const roles = await getRoles();
+    if (roles?.includes("Admin")) {
+      setIsAdmin(true);
+    }
+  };
+
+  checkRole();
+}, []);
 
   const onRefresh = () => fetchDashboard();
 
@@ -504,6 +517,7 @@ export default function DashboardScreen() {
   const goToSettings = () => router.push("/settings");
   const goToScanned  = () => router.push("/contacts?filter=scanned");
   const goToScan     = () => router.push("/scan");
+  const handleUsers = () => router.push("/users");
 
   // ── Export CSV ──
   // Uses exportAndShareContacts() which casts FileSystem internals to avoid
@@ -511,6 +525,7 @@ export default function DashboardScreen() {
 
 
   // ── Share app ──
+
   const handleShare = async () => {
     const totalContacts = summary?.totalContactsCount ?? 0;
     const scansUsed = summary?.totalScansUsed ?? profile?.totalScansUsed ?? 0;
@@ -525,7 +540,6 @@ export default function DashboardScreen() {
       });
     } catch (e) { console.error(e); }
   };
-
   const handleContactPress = (contact: any) => {
     setSelectedContact(contact);
     setDetailVisible(true);
@@ -700,16 +714,34 @@ export default function DashboardScreen() {
             </Text>
           </TouchableOpacity> */}
 
-          <TouchableOpacity
-            style={dashboardStyles.quickBtn}
-            onPress={handleShare}
-            activeOpacity={0.8}
-          >
-            <View style={dashboardStyles.quickIcon}>
-              <Icon name="share-social" size={14} color={colors.amberDark} />
-            </View>
-            <Text style={dashboardStyles.quickLabel}>Share</Text>
-          </TouchableOpacity>
+     {isAdmin ? (
+
+  <TouchableOpacity
+    style={dashboardStyles.quickBtn}
+    onPress={handleUsers}
+    activeOpacity={0.8}
+  >
+    <View style={dashboardStyles.quickIcon}>
+      <Icon name="people-outline" size={14} color={colors.amberDark} />
+    </View>
+    <Text style={dashboardStyles.quickLabel}>Users</Text>
+  </TouchableOpacity>
+
+) : (
+
+  <TouchableOpacity
+    style={dashboardStyles.quickBtn}
+    onPress={handleShare}
+    activeOpacity={0.8}
+  >
+    <View style={dashboardStyles.quickIcon}>
+      <Icon name="share-social" size={14} color={colors.amberDark} />
+    </View>
+    <Text style={dashboardStyles.quickLabel}>Share</Text>
+  </TouchableOpacity>
+
+)}
+
 
           <TouchableOpacity
             style={dashboardStyles.quickBtn}
@@ -717,7 +749,7 @@ export default function DashboardScreen() {
             activeOpacity={0.8}
           >
             <View style={dashboardStyles.quickIcon}>
-              <Icon name="people-outline" size={14} color={colors.amberDark} />
+              <Icon name="call-outline" size={14} color={colors.amberDark} />
             </View>
             <Text style={dashboardStyles.quickLabel}>Contacts</Text>
           </TouchableOpacity>

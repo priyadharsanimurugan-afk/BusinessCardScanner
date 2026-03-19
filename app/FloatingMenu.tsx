@@ -1,32 +1,59 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, TouchableOpacity, Text, StyleSheet } from "react-native";
 import { Entypo } from "@expo/vector-icons";
+import Icon from "react-native-vector-icons/Ionicons";
 import { useRouter } from "expo-router";
 import { colors } from "@/constants/colors";
+import { getRoles } from "@/utils/tokenStorage";
 
 export default function FloatingMenu() {
   const [open, setOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    const checkRole = async () => {
+      const roles = await getRoles();
+      if (roles?.includes("Admin")) {
+        setIsAdmin(true);
+      }
+    };
+
+    checkRole();
+  }, []);
 
   return (
     <View style={styles.container}>
-      
-      {/* Background semicircle - now truly half-circle */}
+
       {open && <View style={styles.menuBackground} />}
 
       {open && (
         <>
-          {/* Dashboard */}
-          <TouchableOpacity
-            style={[styles.menuItem, { bottom: 0, right: 110 }]}
-            onPress={() => {
-              router.push("/dashboard");
-              setOpen(false);
-            }}
-          >
-            <Entypo name="home" size={20} color={colors.white} />
-            <Text style={styles.label}>Dashboard</Text>
-          </TouchableOpacity>
+          {/* FIRST BUTTON (ROLE BASED) */}
+
+          {isAdmin ? (
+            <TouchableOpacity
+              style={[styles.menuItem, { bottom: 0, right: 130 }]}
+              onPress={() => {
+                router.push("/users");
+                setOpen(false);
+              }}
+            >
+              <Icon name="people" size={24} color={colors.white} />
+              <Text style={styles.label}>Users</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.menuItem, { bottom: 0, right: 110 }]}
+              onPress={() => {
+                router.push("/dashboard");
+                setOpen(false);
+              }}
+            >
+              <Entypo name="home" size={20} color={colors.white} />
+              <Text style={styles.label}>Dashboard</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Contacts */}
           <TouchableOpacity
@@ -42,7 +69,7 @@ export default function FloatingMenu() {
 
           {/* Scan */}
           <TouchableOpacity
-            style={[styles.menuItem, { bottom: 70, right: -0 }]}
+            style={[styles.menuItem, { bottom: 70, right: 0 }]}
             onPress={() => {
               router.push("/scan");
               setOpen(false);
@@ -54,7 +81,7 @@ export default function FloatingMenu() {
         </>
       )}
 
-      {/* Main FAB */}
+      {/* FAB */}
       <TouchableOpacity
         style={styles.fab}
         onPress={() => setOpen(!open)}
@@ -86,27 +113,25 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     elevation: 10,
-    zIndex: 10, // Ensure FAB is above the semicircle
+    zIndex: 10,
   },
 
   menuBackground: {
     position: "absolute",
-    width: 270, // Wider than full circle to create semicircle effect
-    height: 160, // Half the width to create a semicircle
-    borderTopLeftRadius: 140, // Half of width
-    borderTopRightRadius: 140, // Half of width
+    width: 270,
+    height: 160,
+    borderTopLeftRadius: 140,
+    borderTopRightRadius: 140,
     backgroundColor: colors.navy,
     opacity: 0.95,
-    bottom: -20, // Adjusted positioning
+    bottom: -20,
     right: -80,
-    transform: [{ rotate: '0deg' }], // You can adjust rotation if needed
-    // Alternative: use borderBottomLeftRadius/RightRadius as 0 to make it a half circle
   },
 
   menuItem: {
     position: "absolute",
     alignItems: "center",
-    zIndex: 20, // Ensure menu items are above the background
+    zIndex: 20,
   },
 
   label: {

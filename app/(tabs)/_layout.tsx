@@ -159,6 +159,12 @@ export default function TabLayout() {
           tabBarIcon: ({ focused }) => <TabIcon name="cog" label="Settings" focused={focused} />,
         }}
       />
+       <Tabs.Screen
+        name="users"
+       options={{
+    href: null, // hides it from tab bar
+  }}
+      />
     </Tabs>
   );
 }

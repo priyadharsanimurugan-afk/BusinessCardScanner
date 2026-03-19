@@ -1,6 +1,6 @@
 
 export interface CreateContact {
-    id?: number | string;  
+  id?: number | string;  
   companyName: string;
   subCompanyName?: string;
   branchName?: string;

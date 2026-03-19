@@ -43,3 +43,9 @@ export const resetPasswordUser = async (data: ResetPassword) => {
   const res = await api.post("/auth/reset-password", data);
   return res.data;
 };
+
+// RESEND RESET CODE
+export const resendResetCode = async (data: ForgotPassword) => {
+  const res = await api.post("/auth/resend-reset-code", data);
+  return res.data;
+};

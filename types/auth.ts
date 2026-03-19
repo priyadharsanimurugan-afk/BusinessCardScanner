@@ -25,5 +25,5 @@ export interface ForgotPassword {
 export interface ResetPassword {
   email: string;
   code: string;
-  password: string;
+  newPassword: string;
 }

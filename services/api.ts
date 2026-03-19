@@ -1,6 +1,8 @@
 import axios from "axios";
-import { getAccessToken, getRefreshToken, saveTokens } from "@/utils/tokenStorage";
+import { deleteTokens, getAccessToken, getRefreshToken, saveTokens } from "@/utils/tokenStorage";
 import { refreshTokenUser } from "./auth";
+import { router } from "expo-router";
+import { triggerLogout } from "@/utils/logout";
 
 export const API_BASE_URL = "https://bs.lemeniz.com/api";
 
@@ -70,8 +72,11 @@ api.interceptors.response.use(
 
         const newAccessToken = res.accessToken;
         const newRefreshToken = res.refreshToken;
+        const roles = res.roles;
+        console.log("Roles from API:", res.roles);
 
-        await saveTokens(newAccessToken, newRefreshToken);
+
+        await saveTokens(newAccessToken, newRefreshToken, roles);
 
         processQueue(null, newAccessToken);
 
@@ -79,12 +84,16 @@ api.interceptors.response.use(
 
         return api(originalRequest);
 
-      } catch (err) {
+      }  catch (err) {
 
-        processQueue(err, null);
-        console.log("Refresh token expired");
+  processQueue(err, null);
+  console.log("Refresh token expired");
 
-      } finally {
+await deleteTokens();
+triggerLogout(); 
+
+}
+ finally {
 
         isRefreshing = false;
 

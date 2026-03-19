@@ -7,20 +7,22 @@ import { ActivityIndicator, View } from "react-native";
 
 export default function Index() {
   const router = useRouter();
+useEffect(() => {
+  const checkLogin = async () => {
+    const token = await getAccessToken();
 
-  useEffect(() => {
-    const checkLogin = async () => {
-      const token = await getAccessToken();
+    console.log("TOKEN:", token);
 
-      if (token) {
-        router.replace("/(tabs)/dashboard"); // go to dashboard
-      } else {
-        router.replace("/login"); // go to login
-      }
-    };
+    if (token) {
+      router.replace("/(tabs)/dashboard");
+    } else {
+      router.replace("/login");
+    }
+  };
 
-    checkLogin();
-  }, []);
+  checkLogin();
+}, []);
+
 
   return (
     <View style={{flex:1,justifyContent:"center",alignItems:"center"}}>

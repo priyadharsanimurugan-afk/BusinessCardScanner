@@ -600,7 +600,7 @@ function CameraScanner({
             : <>
                 <Ionicons name="camera" size={20} color={isFront ? colors.navy : '#fff'} />
                 <Text style={[CameraStyles.captureText, { color: isFront ? colors.navy : '#fff' }]}>
-                  {isFront ? 'Capture Front' : 'Capture Back'}
+                  {isFront ? 'Capture Front' : 'Next'}
                 </Text>
               </>
           }
@@ -612,7 +612,7 @@ function CameraScanner({
             onPress={() => onCapture('__skip__')}
           >
             <Ionicons name="play-skip-forward" size={16} color="#fff" />
-            <Text style={CameraStyles.cancelText}>Skip Back</Text>
+            <Text style={CameraStyles.cancelText}>Skip </Text>
           </TouchableOpacity>
         )}
       </View>

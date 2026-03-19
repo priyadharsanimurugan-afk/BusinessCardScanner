@@ -127,10 +127,11 @@ const handleLogin = async (): Promise<void> => {
     }
 
     // ✅ Save BOTH tokens
-    await saveTokens(res.accessToken, res.refreshToken);
+    await saveTokens(res.accessToken, res.refreshToken,res.roles);
 
     console.log("Access Token:", res.accessToken);
     console.log("Refresh Token:", res.refreshToken);
+    console.log("Roles:", res.roles);
 
     showToast("Login successful!", "success");
 
@@ -210,9 +211,13 @@ const handleForgot = async (): Promise<void> => {
       email: forgotEmail,
     });
 
-    showToast("Reset email sent 📧", "success");
+    showToast("Reset code sent to email 📧", "success");
 
-    setTimeout(() => setShowForgot(false), 1000);
+    // go to reset password page
+    router.push({
+      pathname: "/reset-password",
+      params: { email: forgotEmail },
+    });
 
   } catch (error: any) {
     showToast(
@@ -221,6 +226,7 @@ const handleForgot = async (): Promise<void> => {
     );
   }
 };
+
 
 
   const checkStrength = (val: string): void => {
