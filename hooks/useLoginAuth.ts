@@ -8,10 +8,7 @@ import {
 } from "@/services/auth";
 import { saveTokens } from '@/utils/tokenStorage';
 
-
-
 interface AuthState {
-  
   // Login
   loginEmail: string;
   setLoginEmail: (email: string) => void;
@@ -19,8 +16,8 @@ interface AuthState {
   setLoginPass: (pass: string) => void;
   showLoginPass: boolean;
   setShowLoginPass: (show: boolean) => void;
-  
-  // Signup - UPDATED
+
+  // Signup
   userName: string;
   setUserName: (name: string) => void;
   phoneNumber: string;
@@ -36,11 +33,11 @@ interface AuthState {
   showConfirmPass: boolean;
   setShowConfirmPass: (show: boolean) => void;
   passStrength: number;
-  
+
   // Forgot
   forgotEmail: string;
   setForgotEmail: (email: string) => void;
-  
+
   // UI
   activeTab: 'login' | 'signup';
   setActiveTab: (tab: 'login' | 'signup') => void;
@@ -50,7 +47,7 @@ interface AuthState {
   setRemember: (remember: boolean) => void;
   loading: { login: boolean; signup: boolean };
   toast: { show: boolean; msg: string; type: 'success' | 'error' | 'info' };
-  
+
   // Functions
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
   handleLogin: () => void;
@@ -65,11 +62,7 @@ export const useAuth = (): AuthState => {
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
   const [showForgot, setShowForgot] = useState(false);
   const [remember, setRemember] = useState(false);
-  const [toast, setToast] = useState<{
-    show: boolean;
-    msg: string;
-    type: ToastType;
-  }>({
+  const [toast, setToast] = useState<{ show: boolean; msg: string; type: ToastType }>({
     show: false,
     msg: '',
     type: 'info',
@@ -81,9 +74,9 @@ export const useAuth = (): AuthState => {
   const [loginPass, setLoginPass] = useState('');
   const [showLoginPass, setShowLoginPass] = useState(false);
 
-  // Signup form - UPDATED
-  const [userName, setUserName] = useState('');           // Changed from firstName
-  const [phoneNumber, setPhoneNumber] = useState('');     // Changed from lastName
+  // Signup form
+  const [userName, setUserName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPass, setSignupPass] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
@@ -103,131 +96,114 @@ export const useAuth = (): AuthState => {
     setTimeout(() => setToast({ show: false, msg: '', type: 'info' }), 2800);
   };
 
-const handleLogin = async (): Promise<void> => {
-  if (!validateEmail(loginEmail)) {
-    showToast("Please enter a valid email", "error");
-    return;
-  }
-
-  if (!loginPass) {
-    showToast("Password is required", "error");
-    return;
-  }
-
-  try {
-    setLoading((prev) => ({ ...prev, login: true }));
-
-    const res = await loginUser({
-      email: loginEmail,
-      password: loginPass,
-    });
-
-    if (!res?.accessToken) {
-      throw new Error("Token not received");
+  const handleLogin = async (): Promise<void> => {
+    if (!validateEmail(loginEmail)) {
+      showToast("Please enter a valid email", "error");
+      return;
+    }
+    if (!loginPass) {
+      showToast("Password is required", "error");
+      return;
     }
 
-    // ✅ Save BOTH tokens
-    await saveTokens(res.accessToken, res.refreshToken,res.roles);
+    try {
+      setLoading((prev) => ({ ...prev, login: true }));
 
-    console.log("Access Token:", res.accessToken);
-    console.log("Refresh Token:", res.refreshToken);
-    console.log("Roles:", res.roles);
+      const res = await loginUser({ email: loginEmail, password: loginPass });
 
-    showToast("Login successful!", "success");
+      if (!res?.accessToken) throw new Error("Token not received");
 
-    router.replace("/dashboard");
+      await saveTokens(res.accessToken, res.refreshToken, res.roles);
 
-  } catch (error: any) {
-    showToast(
-      error?.response?.data?.message || error.message || "Login failed",
-      "error"
-    );
-  } finally {
-    setLoading((prev) => ({ ...prev, login: false }));
-  }
-};
+      console.log("Access Token:", res.accessToken);
+      console.log("Refresh Token:", res.refreshToken);
+      console.log("Roles:", res.roles);
 
+      showToast("Login successful!", "success");
 
+      // ✅ expo-router works on ALL platforms (mobile + web)
+      router.replace("/dashboard");
 
-const handleSignup = async (): Promise<void> => {
-  if (!userName) {
-    showToast("User name is required", "error");
-    return;
-  }
+    } catch (error: any) {
+      showToast(
+        error?.response?.data?.message || error.message || "Login failed",
+        "error"
+      );
+    } finally {
+      setLoading((prev) => ({ ...prev, login: false }));
+    }
+  };
 
-  if (!phoneNumber) {
-    showToast("Phone number is required", "error");
-    return;
-  }
+  const handleSignup = async (): Promise<void> => {
+    if (!userName) {
+      showToast("User name is required", "error");
+      return;
+    }
+    if (!phoneNumber) {
+      showToast("Phone number is required", "error");
+      return;
+    }
+    if (!validateEmail(signupEmail)) {
+      showToast("Valid email is required", "error");
+      return;
+    }
+    if (signupPass !== confirmPass) {
+      showToast("Passwords do not match", "error");
+      return;
+    }
 
-  if (!validateEmail(signupEmail)) {
-    showToast("Valid email is required", "error");
-    return;
-  }
+    try {
+      setLoading((prev) => ({ ...prev, signup: true }));
 
-  if (signupPass !== confirmPass) {
-    showToast("Passwords do not match", "error");
-    return;
-  }
+      await signUpUser({
+        email: signupEmail,
+        userName,
+        phoneNumber,
+        password: signupPass,
+      });
 
-  try {
-    setLoading((prev) => ({ ...prev, signup: true }));
+      showToast("Verification code sent to your email 📧", "success");
 
-    await signUpUser({
-      email: signupEmail,
-      userName,
-      phoneNumber,
-      password: signupPass,
-    });
+      // ✅ Use expo-router for ALL platforms — no window.location
+      router.replace({
+        pathname: "/verify-email",
+        params: { email: signupEmail },
+      });
 
-    showToast("Verification code sent to your email 📧", "success");
+    } catch (error: any) {
+      showToast(
+        error?.response?.data?.message || "Signup failed",
+        "error"
+      );
+    } finally {
+      setLoading((prev) => ({ ...prev, signup: false }));
+    }
+  };
 
-    // Navigate to verify screen
-    router.push({
-      pathname: "/verify-email",
-      params: { email: signupEmail },
-    });
+  const handleForgot = async (): Promise<void> => {
+    if (!validateEmail(forgotEmail)) {
+      showToast("Enter a valid email", "error");
+      return;
+    }
 
-  } catch (error: any) {
-    showToast(
-      error?.response?.data?.message || "Signup failed",
-      "error"
-    );
-  } finally {
-    setLoading((prev) => ({ ...prev, signup: false }));
-  }
-};
+    try {
+      await forgotPasswordUser({ email: forgotEmail });
 
+      showToast("Reset code sent to email 📧", "success");
 
+      // ✅ Use expo-router for ALL platforms — no window.location
+      router.replace({
+        pathname: "/reset-password",
+        params: { email: forgotEmail },
+      });
 
-const handleForgot = async (): Promise<void> => {
-  if (!validateEmail(forgotEmail)) {
-    showToast("Enter a valid email", "error");
-    return;
-  }
-
-  try {
-    await forgotPasswordUser({
-      email: forgotEmail,
-    });
-
-    showToast("Reset code sent to email 📧", "success");
-
-    // go to reset password page
-    router.push({
-      pathname: "/reset-password",
-      params: { email: forgotEmail },
-    });
-
-  } catch (error: any) {
-    showToast(
-      error?.response?.data?.message || "Something went wrong",
-      "error"
-    );
-  }
-};
-
-
+    } catch (error: any) {
+      showToast(
+        error?.response?.data?.message || "Something went wrong",
+        "error"
+      );
+    }
+  };
 
   const checkStrength = (val: string): void => {
     let score = 0;
@@ -240,44 +216,30 @@ const handleForgot = async (): Promise<void> => {
 
   return {
     // Login
-    loginEmail, 
-    setLoginEmail,
-    loginPass, 
-    setLoginPass,
-    showLoginPass, 
-    setShowLoginPass,
-    
-    // Signup - UPDATED
-    userName, 
-    setUserName,
-    phoneNumber, 
-    setPhoneNumber,
-    signupEmail, 
-    setSignupEmail,
-    signupPass, 
-    setSignupPass,
-    confirmPass, 
-    setConfirmPass,
-    showSignupPass, 
-    setShowSignupPass,
-    showConfirmPass, 
-    setShowConfirmPass,
+    loginEmail, setLoginEmail,
+    loginPass, setLoginPass,
+    showLoginPass, setShowLoginPass,
+
+    // Signup
+    userName, setUserName,
+    phoneNumber, setPhoneNumber,
+    signupEmail, setSignupEmail,
+    signupPass, setSignupPass,
+    confirmPass, setConfirmPass,
+    showSignupPass, setShowSignupPass,
+    showConfirmPass, setShowConfirmPass,
     passStrength,
-    
+
     // Forgot
-    forgotEmail, 
-    setForgotEmail,
-    
+    forgotEmail, setForgotEmail,
+
     // UI
-    activeTab, 
-    setActiveTab,
-    showForgot, 
-    setShowForgot,
-    remember, 
-    setRemember,
+    activeTab, setActiveTab,
+    showForgot, setShowForgot,
+    remember, setRemember,
     loading,
     toast,
-    
+
     // Functions
     showToast,
     handleLogin,

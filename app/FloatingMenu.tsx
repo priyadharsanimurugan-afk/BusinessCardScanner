@@ -5,13 +5,15 @@ import Icon from "react-native-vector-icons/Ionicons";
 import { useRouter } from "expo-router";
 import { colors } from "@/constants/colors";
 import { getRoles } from "@/utils/tokenStorage";
+import { useDeviceType } from "@/hooks/useDeviceType";
 
 export default function FloatingMenu() {
   const [open, setOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
+  const { isDesktop } = useDeviceType(); // 👈 added
 
-  useEffect(() => {
+   useEffect(() => {
     const checkRole = async () => {
       const roles = await getRoles();
       if (roles?.includes("Admin")) {
@@ -21,6 +23,9 @@ export default function FloatingMenu() {
 
     checkRole();
   }, []);
+
+  // 👇 Hide menu on desktop
+  if (isDesktop) return null;
 
   return (
     <View style={styles.container}>

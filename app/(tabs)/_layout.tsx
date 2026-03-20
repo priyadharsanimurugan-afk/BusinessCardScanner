@@ -1,24 +1,22 @@
-//app/dashboard/_layout.tsx
+// app/dashboard/_layout.tsx
 
 import { Tabs } from 'expo-router';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Entypo } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
+import { useDeviceType } from '@/hooks/useDeviceType';
+
+
 
 function TabIcon({ name, label, focused, isScan = false }: { name: any; label: string; focused: boolean; isScan?: boolean }) {
-  // if (isScan) {
-  //   // Special rendering for the Scan tab to match the HTML design
-  //   return (
-  //     <View style={tabStyles.scanTab}>
-  //       <View style={[tabStyles.scanOrb, focused && tabStyles.scanOrbActive]}>
-  //         <Entypo name="camera" size={21} color={colors.white} />
-  //       </View>
-  //       <Text style={[tabStyles.scanLabel, focused && tabStyles.scanLabelActive]}>{label}</Text>
-  //     </View>
-  //   );
-  // }
+  const { isDesktop } = useDeviceType();
 
-  // Rendering for all other tabs
+  // Don't show tab icons on desktop
+  if (isDesktop) {
+    return null;
+  }
+
+  // Rendering for all other tabs (mobile only)
   return (
     <View style={[tabStyles.tabItem, focused && tabStyles.tabItemActive]}>
       <Entypo 
@@ -39,22 +37,6 @@ function TabIcon({ name, label, focused, isScan = false }: { name: any; label: s
 }
 
 const tabStyles = StyleSheet.create({
-  // Style for the main tab bar container
-  tabBar: {
-    backgroundColor: colors.white,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    height: 65,
-    // paddingBottom: 6,
-    paddingTop: 6,
-    paddingHorizontal: 8,
-    elevation: 20,
-    shadowColor: colors.navy,
-    shadowOpacity: 0.07,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  // Style for the wrapper of regular tabs
   tabItem: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -63,13 +45,9 @@ const tabStyles = StyleSheet.create({
     borderRadius: 20,
     minWidth: 70,
   },
-  // Active state for regular tabs (matches HTML: amber-light background)
   tabItemActive: {
     backgroundColor: colors.amberLight,
     height: 45,
-    marginTop: 0,
-    // paddingBottom: -8,
-
   },
   label: {
     fontSize: 10,
@@ -84,51 +62,36 @@ const tabStyles = StyleSheet.create({
     color: colors.amberDark,
     fontWeight: '700',
   },
-  // --- Styles for the special Scan Tab ---
-  scanTab: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 50,
-    marginTop: -16, // Pulls the orb up to overlap the tab bar
+  // Mobile tab bar styles
+  tabBarMobile: {
+    backgroundColor: colors.white,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    height: 65,
+    paddingTop: 6,
+    paddingHorizontal: 8,
+    elevation: 20,
+    shadowColor: colors.navy,
+    shadowOpacity: 0.07,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 2 },
   },
-  scanOrb: {
-    width: 47,
-    height: 47,
-    backgroundColor: colors.amber,
-    borderRadius: 26,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: colors.amber,
-    shadowOpacity: 0.5,
-    shadowRadius: 18,
-    elevation: 8,
-    borderWidth: 3,
-    borderColor: colors.white,
-    marginBottom: 2,
-  },
-  scanOrbActive: {
-    // Optional: Add a different style if the scan tab itself can be "active"
-    // For now, it looks the same whether active or not, just like HTML.
-  },
-  scanLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  scanLabelActive: {
-    color: colors.amberDark,
-    fontWeight: '700',
+  // Desktop tab bar style (hidden)
+  tabBarDesktop: {
+    display: 'none',
+    height: 0,
   },
 });
 
 export default function TabLayout() {
+  const { isDesktop } = useDeviceType();
+
   return (
-    
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
-        tabBarStyle: tabStyles.tabBar,
+        tabBarStyle: isDesktop ? tabStyles.tabBarDesktop : tabStyles.tabBarMobile,
       }}
     >
       <Tabs.Screen
@@ -159,11 +122,11 @@ export default function TabLayout() {
           tabBarIcon: ({ focused }) => <TabIcon name="cog" label="Settings" focused={focused} />,
         }}
       />
-       <Tabs.Screen
+      <Tabs.Screen
         name="users"
-       options={{
-    href: null, // hides it from tab bar
-  }}
+        options={{
+          href: null, // hides it from tab bar
+        }}
       />
     </Tabs>
   );

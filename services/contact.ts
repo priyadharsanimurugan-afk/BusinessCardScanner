@@ -54,3 +54,30 @@ export const exportContacts = async () => {
     throw new Error("Export failed");
   }
 };
+
+export const exportContactsWeb = async () => {
+  try {
+    const res = await api.get("/export/contacts.xlsx", {
+      responseType: "blob", // 👈 important for web
+    });
+
+    // Create blob link
+    const url = window.URL.createObjectURL(new Blob([res.data]));
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "contacts.xlsx"); // file name
+
+    document.body.appendChild(link);
+    link.click();
+
+    // Cleanup
+    link.remove();
+    window.URL.revokeObjectURL(url);
+
+  } catch (error) {
+    console.error(error);
+    throw new Error("Export failed");
+  }
+};
+

@@ -24,6 +24,9 @@ export interface CreateContact {
   backImageMimeType: string;
   frontImage?: string;
   backImage?: string;
+  partnership?: string;
+  qrCodeDetail?: string;
+  gstNumber?: string;
 }
 
 export interface ContactDetail extends CreateContact {

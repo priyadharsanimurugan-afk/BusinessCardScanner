@@ -8,6 +8,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import FloatingMenu from "./FloatingMenu";
 import { MenuVisibilityProvider, useMenuVisibility } from "@/context/MenuVisibilityContext";
 import { setLogoutHandler } from "@/utils/logout";
+import { getIsLoggingOut } from "@/utils/logout";
+
 
 function LayoutContent() {
   const { isMenuVisible } = useMenuVisibility();
@@ -16,23 +18,33 @@ function LayoutContent() {
 
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const checkLogin = async () => {
-      const token = await getAccessToken();
+useEffect(() => {
+  const checkLogin = async () => {
 
-      const inAuthGroup = segments[0] === "login";
+    // 🚨 STOP layout during logout
+    if (getIsLoggingOut()) {
+      return;
+    }
 
-      if (!token && !inAuthGroup) {
-        router.replace("/login");
-      } else if (token && inAuthGroup) {
-        router.replace("/(tabs)/dashboard");
-      }
+    const token = await getAccessToken();
 
-      setLoading(false);
-    };
+    const publicRoutes = ['login', 'verify-email', 'reset-password'];
+    const currentRoute = segments[0];
+    const isPublicRoute = publicRoutes.includes(currentRoute);
+    const inAuthGroup = currentRoute === "login";
 
-    checkLogin();
-  }, [segments]);
+    if (!token && !isPublicRoute) {
+      router.replace("/login");
+    } else if (token && inAuthGroup) {
+      router.replace("/(tabs)/dashboard");
+    }
+
+    setLoading(false);
+  };
+
+  checkLogin();
+}, [segments]);
+
 
   if (loading) {
     return (
