@@ -14,7 +14,7 @@
     "android": {
       "package": "com.priyachithra.BusinessCardScanner",
       "softwareKeyboardLayoutMode": "pan",
-       "usesCleartextTraffic": true,
+      "usesCleartextTraffic": true,
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {

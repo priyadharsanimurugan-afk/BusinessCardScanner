@@ -1,6 +1,7 @@
 {
-  "buildCommand": "expo export:web",
+  "buildCommand": "npm run build:web",
   "outputDirectory": "dist",
+  "installCommand": "npm install",
   "framework": null,
   "routes": [
     {
