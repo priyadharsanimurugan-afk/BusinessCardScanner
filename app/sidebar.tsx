@@ -11,7 +11,7 @@ import {
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useRouter, usePathname } from 'expo-router';
 import { colors } from '@/constants/colors';
-
+import { Image } from 'react-native';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface SidebarProps {
@@ -90,9 +90,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <View style={styles.sidebar}>
       {/* Logo */}
       <View style={styles.logo}>
-        <View style={styles.logoIcon}>
-          <Icon name="card" size={20} color={colors.navy} />
-        </View>
+     <View >
+  <Image 
+    source={require('@/assets/images/scannerlogo.png')} 
+    style={{ width: 50, height: 50 }} 
+    resizeMode="contain"
+  />
+</View>
         <View>
           <Text style={styles.logoText}>CardScan Pro</Text>
           <Text style={styles.logoTag}>Smart Scanner</Text>
