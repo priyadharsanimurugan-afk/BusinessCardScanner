@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ScrollView,
   View,
@@ -18,6 +18,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { useMenuVisibility } from "@/context/MenuVisibilityContext";
 import { Image } from "react-native";
+import {
+  getRememberedCredentials,
+  saveRememberedCredentials,
+  clearRememberedCredentials,
+} from "@/utils/tokenStorage";
 
 const LoginScreen = () => {
   const { width } = useWindowDimensions();
@@ -74,6 +79,27 @@ const LoginScreen = () => {
   } = useAuth();
 
   const { setMenuVisible } = useMenuVisibility();
+  const [isLoadingCredentials, setIsLoadingCredentials] = useState(true);
+
+  // Load remembered credentials on mount
+  useEffect(() => {
+    const loadRememberedCredentials = async () => {
+      try {
+        const { email, password } = await getRememberedCredentials();
+        if (email && password) {
+          setLoginEmail(email);
+          setLoginPass(password);
+          setRemember(true);
+        }
+      } catch (error) {
+        console.error("Failed to load remembered credentials:", error);
+      } finally {
+        setIsLoadingCredentials(false);
+      }
+    };
+
+    loadRememberedCredentials();
+  }, [setLoginEmail, setLoginPass, setRemember]);
 
   useEffect(() => {
     setMenuVisible(false);
@@ -81,6 +107,36 @@ const LoginScreen = () => {
       setMenuVisible(true);
     };
   }, [setMenuVisible]);
+
+  // Handle remember me toggle
+  const handleRememberMe = async (checked: boolean) => {
+    setRemember(checked);
+    
+    // If unchecked, clear stored credentials
+    if (!checked) {
+      await clearRememberedCredentials();
+    } else {
+      // If checked and both email and password exist, save them
+      if (loginEmail && loginPass) {
+        await saveRememberedCredentials(loginEmail, loginPass);
+      }
+    }
+  };
+
+  // Override handleLogin to save credentials when remember me is checked
+  const handleLoginWithRemember = async () => {
+    try {
+      // First, perform the login
+      await handleLogin();
+      
+      // If login was successful and remember is checked, save credentials
+      if (remember && loginEmail && loginPass) {
+        await saveRememberedCredentials(loginEmail, loginPass);
+      }
+    } catch (error) {
+      console.error("Login failed:", error);
+    }
+  };
 
   // Shared auth form props
   const authFormProps = {
@@ -110,11 +166,11 @@ const LoginScreen = () => {
     activeTab,
     showForgot,
     remember,
-    setRemember,
+    setRemember: handleRememberMe, // Use the custom handler
     loading,
     setActiveTab,
     setShowForgot,
-    handleLogin,
+    handleLogin: handleLoginWithRemember, // Use the wrapped login function
     handleSignup,
     handleForgot,
     checkStrength,
@@ -126,45 +182,35 @@ const LoginScreen = () => {
       style={[
         loginStyles.hero,
         isDesktop && { flex: 1 },
-
         // ✅ ONLY for mobile
         !isTablet && !isDesktop && {
           marginTop: 0,
         },
       ]}
     >
-
       <View style={loginStyles.heroGlow} />
 
       <View style={loginStyles.brand}>
-      <View
-  // style={[
-  //   loginStyles.brandIcon,
-  //   isDesktop && { marginTop: 100 },
-  // ]}
->
-<Image
-  source={require("@/assets/images/scannerlogo.png")}
-  style={[
-    {
-      width: isDesktop ? 60 : 50,
-      height: isDesktop ? 60 : 50,
-      resizeMode: "contain",
-      marginRight: 20,
-      marginTop: 20
-    },
-    isDesktop && { marginTop: 120 ,marginRight: 20},
-  ]}
-/>
-
-</View>
+        <View>
+          <Image
+            source={require("@/assets/images/scannerlogo.png")}
+            style={[
+              {
+                width: isDesktop ? 60 : 50,
+                height: isDesktop ? 60 : 50,
+                resizeMode: "contain",
+                marginRight: 20,
+                marginTop: 20,
+              },
+              isDesktop && { marginTop: 120, marginRight: 20 },
+            ]}
+          />
+        </View>
 
         <View>
           <Text
             style={[
               loginStyles.brandName,
-          
-
               // ✅ only desktop
               isDesktop && { marginTop: 120 },
             ]}
@@ -172,10 +218,7 @@ const LoginScreen = () => {
             CardScan Pro
           </Text>
 
-          <Text style={loginStyles.brandTag}>
-            Smart Business Card Scanner
-          </Text>
-
+          <Text style={loginStyles.brandTag}>Smart Business Card Scanner</Text>
         </View>
       </View>
 
@@ -200,7 +243,10 @@ const LoginScreen = () => {
             {[
               { icon: "scan-outline", text: "Instantly scan business cards" },
               { icon: "people-outline", text: "Manage your entire network" },
-              { icon: "cloud-upload-outline", text: "Sync across all your devices" },
+              {
+                icon: "cloud-upload-outline",
+                text: "Sync across all your devices",
+              },
             ].map((item, i) => (
               <View
                 key={i}
@@ -237,7 +283,10 @@ const LoginScreen = () => {
       {!isDesktop && (
         <View style={loginStyles.tabs}>
           <TouchableOpacity
-            style={[loginStyles.tab, activeTab === "login" && loginStyles.activeTab]}
+            style={[
+              loginStyles.tab,
+              activeTab === "login" && loginStyles.activeTab,
+            ]}
             onPress={() => setActiveTab("login")}
           >
             <Text
@@ -250,7 +299,10 @@ const LoginScreen = () => {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[loginStyles.tab, activeTab === "signup" && loginStyles.activeTab]}
+            style={[
+              loginStyles.tab,
+              activeTab === "signup" && loginStyles.activeTab,
+            ]}
             onPress={() => setActiveTab("signup")}
           >
             <Text
@@ -283,7 +335,10 @@ const LoginScreen = () => {
   // ── DESKTOP LAYOUT (two-column) ────────────────────────────────────────────
   if (isDesktop) {
     return (
-      <SafeAreaView style={[loginStyles.container, { flexDirection: "row" }]} edges={["bottom"]}>
+      <SafeAreaView
+        style={[loginStyles.container, { flexDirection: "row" }]}
+        edges={["bottom"]}
+      >
         {/* Toast */}
         {toast.show && (
           <View
@@ -299,8 +354,8 @@ const LoginScreen = () => {
                 toast.type === "error"
                   ? "close-circle"
                   : toast.type === "success"
-                    ? "checkmark-circle"
-                    : "information-circle"
+                  ? "checkmark-circle"
+                  : "information-circle"
               }
               size={18}
               color="#fff"
@@ -319,15 +374,29 @@ const LoginScreen = () => {
             contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
           >
             {/* Desktop tabs inside right panel */}
-            <View style={[loginStyles.tabs, { marginBottom: 24, backgroundColor: "rgba(15,23,42,0.07)" }]}>
+            <View
+              style={[
+                loginStyles.tabs,
+                {
+                  marginBottom: 24,
+                  backgroundColor: "rgba(15,23,42,0.07)",
+                },
+              ]}
+            >
               <TouchableOpacity
-                style={[loginStyles.tab, activeTab === "login" && loginStyles.activeTab]}
+                style={[
+                  loginStyles.tab,
+                  activeTab === "login" && loginStyles.activeTab,
+                ]}
                 onPress={() => setActiveTab("login")}
               >
                 <Text
                   style={[
                     loginStyles.tabText,
-                    { color: activeTab === "login" ? undefined : colors.muted },
+                    {
+                      color:
+                        activeTab === "login" ? undefined : colors.muted,
+                    },
                     activeTab === "login" && loginStyles.activeTabText,
                   ]}
                 >
@@ -335,13 +404,19 @@ const LoginScreen = () => {
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[loginStyles.tab, activeTab === "signup" && loginStyles.activeTab]}
+                style={[
+                  loginStyles.tab,
+                  activeTab === "signup" && loginStyles.activeTab,
+                ]}
                 onPress={() => setActiveTab("signup")}
               >
                 <Text
                   style={[
                     loginStyles.tabText,
-                    { color: activeTab === "signup" ? undefined : colors.muted },
+                    {
+                      color:
+                        activeTab === "signup" ? undefined : colors.muted,
+                    },
                     activeTab === "signup" && loginStyles.activeTabText,
                   ]}
                 >
@@ -377,8 +452,8 @@ const LoginScreen = () => {
                 toast.type === "error"
                   ? "close-circle"
                   : toast.type === "success"
-                    ? "checkmark-circle"
-                    : "information-circle"
+                  ? "checkmark-circle"
+                  : "information-circle"
               }
               size={18}
               color="#fff"
@@ -426,8 +501,8 @@ const LoginScreen = () => {
               toast.type === "error"
                 ? "close-circle"
                 : toast.type === "success"
-                  ? "checkmark-circle"
-                  : "information-circle"
+                ? "checkmark-circle"
+                : "information-circle"
             }
             size={18}
             color="#fff"

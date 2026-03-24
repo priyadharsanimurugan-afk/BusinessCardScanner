@@ -2,18 +2,16 @@
   "name": "Scannify",
   "main": "expo-router/entry.js",
   "version": "1.0.0",
-"scripts": {
-  "start": "expo start",
-  "reset-project": "node ./scripts/reset-project.js",
-  "android": "expo run:android",
-  "ios": "expo run:ios",
-  "web": "expo start --web",
-  "build": "expo export --platform web",
-  "build:web": "expo export --platform web",
-  "lint": "expo lint"
-}
-
-,
+  "scripts": {
+    "start": "expo start",
+    "reset-project": "node ./scripts/reset-project.js",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "build": "expo export --platform web",
+    "build:web": "expo export --platform web",
+    "lint": "expo lint"
+  },
   "dependencies": {
     "@dariyd/react-native-text-recognition": "^2.0.20",
     "@expo/vector-icons": "^15.0.3",
@@ -25,6 +23,7 @@
     "@react-navigation/native": "^7.1.8",
     "axios": "^1.13.6",
     "buffer": "^6.0.3",
+    "crypto-js": "^4.2.0",
     "expo": "~54.0.33",
     "expo-camera": "~17.0.10",
     "expo-clipboard": "^8.0.8",
@@ -66,6 +65,7 @@
   "devDependencies": {
     "@react-native-community/cli": "^20.1.2",
     "@react-native/metro-config": "^0.84.1",
+    "@types/crypto-js": "^4.2.2",
     "@types/react": "~19.1.0",
     "@types/react-native-vector-icons": "^6.4.18",
     "eslint": "^9.25.0",
