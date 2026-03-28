@@ -475,9 +475,7 @@ const handleLogout = () => {
   </View>
 )}
 
-        <Text style={settingsStyles.versionFooter}>
-          CardScan Pro v2.4.1 · Made with ❤️
-        </Text>
+      
       </ScrollView>
     </View>
   );
