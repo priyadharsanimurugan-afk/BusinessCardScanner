@@ -1,13 +1,14 @@
 {
   "expo": {
     "name": "CardScan Pro",
-    "slug": "CardScannerPro",
+    "slug": "cardscannerpro",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/scannerlogo.png",
     "scheme": "cardscanner",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.cardscanner.realtime",
@@ -17,6 +18,7 @@
         "NSPhotoLibraryAddUsageDescription": "Allow saving scanned images"
       }
     },
+
     "android": {
       "package": "com.cardscanner.realtime",
       "softwareKeyboardLayoutMode": "pan",
@@ -31,11 +33,13 @@
         "android.permission.CAMERA"
       ]
     },
+
     "web": {
       "bundler": "metro",
       "output": "static",
       "favicon": "./assets/images/scannerlogo.png"
     },
+
     "plugins": [
       "expo-router",
       [
@@ -64,17 +68,27 @@
       ],
       "expo-secure-store"
     ],
+
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
+
+    "extra": {
+      "eas": {
+        "projectId": "2bf15862-7ce1-4526-9d40-ae194994b092"
+      }
+    },
+
     "runtimeVersion": {
       "policy": "appVersion"
     },
+
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
-      "fallbackToCacheTimeout": 0
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/2bf15862-7ce1-4526-9d40-ae194994b092"
     }
   }
 }
